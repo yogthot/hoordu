@@ -114,6 +114,10 @@ class Post(Base):
     removed = FlagProperty('flags', PostFlags.removed)
 
 
+class ServiceSetupState(Enum):
+    ready = 0
+    config = 1 # the service is missing vital configuration parameters
+    setup = 2 # the service is configured properly, but it needs extra user input (e.g. authentication)
 
 class Service(Base):
     __tablename__ = 'service'
@@ -123,6 +127,7 @@ class Service(Base):
     name = Column(String(length=255, collation='NOCASE'), nullable=False, index=True, unique=True)
     version = Column(Integer, nullable=False)
     config = Column(Text)
+    setup_state = Column(ChoiceType(ServiceSetupState, impl=Integer()), default=ServiceSetupState.config, nullable=False)
     
     metadata_ = Column('metadata', Text)
     

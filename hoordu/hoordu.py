@@ -22,24 +22,17 @@ class hoordu(object):
     def create_all(self):
         models.Base.metadata.create_all(self.engine)
     
-    def register_service(self, name, version):
+    def register_service(self, name):
         service = self.session.query(models.Service).filter(models.Service.name==name).one_or_none()
         
         if service is not None:
-            old_version = service.version
-            
-            if service.version != version:
-                # update version
-                service.version = version
-                self.flush()
-            
-            return service, old_version
+            return service
             
         else:
-            service = models.Service(name=name, version=version)
+            service = models.Service(name=name, version=0)
             self.add(service)
             self.flush()
-            return service, 0
+            return service
     
     def add(self, *args):
         return self.session.add_all(args)
