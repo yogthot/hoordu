@@ -83,8 +83,8 @@ class PostFlags(IntFlag):
     removed = auto() # if the post was deleted in the remote host
 
 class PostType(Enum):
-    image_set = 1
-    comic = 2
+    pool = 1 # bundle of unrelated files (or just a single file)
+    collection = 2 # the files are related in some way
     # more types can be added as needed
 
 class Post(Base):
@@ -111,7 +111,8 @@ class Post(Base):
     # flags
     favorite = FlagProperty('flags', PostFlags.favorite)
     hidden = FlagProperty('flags', PostFlags.hidden)
-    #removed = FlagProperty('flags', PostFlags.removed)
+    removed = FlagProperty('flags', PostFlags.removed)
+
 
 
 class Service(Base):
@@ -145,6 +146,8 @@ class RemoteTag(Base):
     
     category = Column(ChoiceType(TagCategory, impl=Integer()), nullable=False)
     tag = Column(String(length=255, collation='NOCASE'), nullable=False)
+    
+    metadata_ = Column('metadata', Text)
     
     flags = Column(Integer, default=TagFlags.none, nullable=False)
     
@@ -250,6 +253,10 @@ subscription_post = Table('feed', Base.metadata,
     Column('remote_post_id', Integer, ForeignKey('remote_post.id', ondelete='CASCADE'), nullable=False)
 )
 
+class SubscriptionFlags(IntFlag):
+    none = 0
+    completed = auto() # if there are no posts after the tail
+
 class Subscription(Base):
     __tablename__ = 'subscription'
     
@@ -262,12 +269,17 @@ class Subscription(Base):
     search = Column(Text)
     state = Column(Text)
     
+    flags = Column(Integer, default=SubscriptionFlags.none, nullable=False)
+    
     created_time = Column(DateTime(timezone=False), default=datetime.utcnow, nullable=False)
     updated_time = Column(DateTime(timezone=False), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     
     # references
     service = relationship('Service', back_populates='subscriptions')
     feed = relationship('RemotePost', secondary=subscription_post)
+    
+    # flags
+    completed = FlagProperty('flags', SubscriptionFlags.completed)
 
 
 class TagTranslation(Base):

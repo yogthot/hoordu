@@ -1,29 +1,12 @@
-from .config import load_config, get_logger
+from .config import get_logger
 from . import models
+from .util import *
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 import shutil
-from hashlib import md5 as _md5
 import pathlib
-
-# handle both python-magic libraries
-import magic
-if hasattr(magic, 'open'):
-    __magic = magic.open(magic.MAGIC_MIME_TYPE)
-    __magic.load()
-    mime_from_file = __magic.file
-else:
-    mime_from_file = lambda path: magic.from_file(path, mime=True)
-# /
-
-def md5(fname):
-    hash = _md5()
-    with open(fname, 'rb') as f:
-        for chunk in iter(lambda: f.read(4096), b''):
-            hash.update(chunk)
-    return hash.digest()
 
 class hoordu(object):
     def __init__(self, config):
@@ -87,7 +70,6 @@ class hoordu(object):
         file = models.File(remote=post, remote_order=order, hash=hash, mime=mime, ext=ext, flags=flags)
         
         # I'd rather not do this, but we need the id for the filename
-        # ...unless we use some kind of uuid
         self.add(file)
         self.flush()
         
