@@ -43,38 +43,25 @@ class hoordu(object):
     def commit(self):
         return self.session.commit()
     
-    """
-    # not sure if this is a good idea
-    def save(self, *args):
-        session = self._Session()
-        session.add_all(args)
-        return session.commit()
-    """
-    
-    def import_file(self, post, src, thumb=None, order=None, move=False):
-        hash = md5(src)
-        mime = mime_from_file(src)
-        ext = ''.join(pathlib.Path(src).suffixes)[1:]
+    def import_file(self, file, orig=None, thumb=None, move=False):
+        mvfun = shutil.move if move else shutil.copy
         
-        flags = models.FileFlags.none
-        if thumb is None:
-            flags = flags | models.FileFlags.thumb_present
-        
-        file = models.File(remote=post, remote_order=order, hash=hash, mime=mime, ext=ext, flags=flags)
-        
-        # I'd rather not do this, but we need the id for the filename
-        self.add(file)
-        self.flush()
+        if orig is not None:
+            file.hash = md5(orig)
+            file.mime = mime_from_file(orig)
+            file.ext = ''.join(pathlib.Path(orig).suffixes)[1:]
         
         dst, tdst = self._get_file_paths(file)
         
-        mvfun = shutil.move if move else shutil.copy
+        if orig is not None:
+            pathlib.Path(dst).parent.mkdir(parents=True, exist_ok=True)
+            mvfun(orig, dst)
+            file.file_present = True
         
-        pathlib.Path(dst).parent.mkdir(parents=True, exist_ok=True)
-        mvfun(src, dst)
         if thumb is not None:
             pathlib.Path(tdst).parent.mkdir(parents=True, exist_ok=True)
             mvfun(thumb, tdst)
+            file.thumb_present = True
     
     def _file_slot(self, file):
         return file.id // self.config.files_slot_size
@@ -82,8 +69,8 @@ class hoordu(object):
     def _get_file_paths(self, file):
         file_slot = self._file_slot(file)
         
-        if file.ext is not None:
-            filepath = '{}/{}/{}.{}'.format(self.filespath, file_slot, file.id, file.ext)
+        if file.ext:
+            filepath = '{}/{}/{}'.format(self.filespath, file_slot, file.id)
         else:
             filepath = '{}/{}/{}'.format(self.filespath, file_slot, file.id)
         
