@@ -46,7 +46,7 @@ class TagCategory(Enum):
     artist = 3
     copyright = 4
     character = 5
-    # used for informational tags and personal reminders
+    # used for informational tags or personal reminders
     meta = 6
 
 class TagFlags(IntFlag):
