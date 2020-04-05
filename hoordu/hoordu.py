@@ -43,6 +43,24 @@ class hoordu(object):
     def commit(self):
         return self.session.commit()
     
+    def get_tag(self, **kwargs):
+        tag = self.session.query(models.Tag).filter_by(**kwargs).one_or_none()
+        
+        if tag is None:
+            tag = models.Tag(**kwargs)
+            self.session.add(tag)
+        
+        return tag
+    
+    def get_remote_tag(self, **kwargs):
+        tag = self.session.query(models.RemoteTag).filter_by(**kwargs).one_or_none()
+        
+        if tag is None:
+            tag = models.RemoteTag(**kwargs)
+            self.session.add(tag)
+        
+        return tag
+    
     def import_file(self, file, orig=None, thumb=None, move=False):
         mvfun = shutil.move if move else shutil.copy
         
@@ -50,6 +68,9 @@ class hoordu(object):
             file.hash = md5(orig)
             file.mime = mime_from_file(orig)
             file.ext = ''.join(pathlib.Path(orig).suffixes)[1:]
+        
+        if thumb is not None:
+            file.thumb_ext = ''.join(pathlib.Path(thumb).suffixes)[1:]
         
         dst, tdst = self._get_file_paths(file)
         
@@ -74,7 +95,10 @@ class hoordu(object):
         else:
             filepath = '{}/{}/{}'.format(self.filespath, file_slot, file.id)
         
-        thumbpath = '{}/{}/{}.jpg'.format(self.thumbspath, file_slot, file.id)
+        if file.thumb_ext:
+            thumbpath = '{}/{}/{}.jpg'.format(self.thumbspath, file_slot, file.id)
+        else:
+            thumbpath = '{}/{}/{}'.format(self.thumbspath, file_slot, file.id)
         
         return filepath, thumbpath
 

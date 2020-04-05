@@ -234,6 +234,7 @@ class File(Base):
     hash = Column(LargeBinary(length=16), index=True)
     mime = Column(String(length=255, collation='NOCASE'))
     ext = Column(String(length=20, collation='NOCASE'))
+    thumb_ext = Column(String(length=20, collation='NOCASE'))
     
     flags = Column(Integer, default=FileFlags.none, nullable=False)
     
@@ -271,7 +272,7 @@ class Subscription(Base):
     
     name = Column(Text, nullable=False, unique=True, index=True)
     
-    search = Column(Text)
+    options = Column(Text)
     state = Column(Text)
     
     flags = Column(Integer, default=SubscriptionFlags.none, nullable=False)
