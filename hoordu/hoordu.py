@@ -20,18 +20,22 @@ class hoordu(object):
         self.thumbspath = '{}/thumbs'.format(self.config.base_path)
     
     def create_all(self):
+        self.logger.info('creating all relations in the database')
         models.Base.metadata.create_all(self.engine)
     
     def register_service(self, name):
+        self.logger.info('registering service: %s', name)
         service = self.session.query(models.Service).filter(models.Service.name==name).one_or_none()
         
         if service is not None:
+            self.logger.info('service already exists: %s', name)
             return service
             
         else:
             service = models.Service(name=name, version=0)
             self.add(service)
             self.flush()
+            self.logger.info('registered service: %s', name)
             return service
     
     def add(self, *args):
@@ -62,6 +66,7 @@ class hoordu(object):
         return tag
     
     def import_file(self, file, orig=None, thumb=None, move=False):
+        self.logger.info('importing file: %s, of post: %s', file.id, file.remote_id)
         mvfun = shutil.move if move else shutil.copy
         
         if orig is not None:
@@ -75,11 +80,13 @@ class hoordu(object):
         dst, tdst = self._get_file_paths(file)
         
         if orig is not None:
+            self.logger.info('importing original file, move: %r', move)
             pathlib.Path(dst).parent.mkdir(parents=True, exist_ok=True)
             mvfun(orig, dst)
             file.file_present = True
         
         if thumb is not None:
+            self.logger.info('importing thumbnail, move: %r', move)
             pathlib.Path(tdst).parent.mkdir(parents=True, exist_ok=True)
             mvfun(thumb, tdst)
             file.thumb_present = True
