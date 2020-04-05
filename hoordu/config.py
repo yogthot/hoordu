@@ -44,7 +44,7 @@ def get_logger(name, filename=None, level=logging.WARNING):
     logger = logging.getLogger(name)
     logger.setLevel(logging.DEBUG)
     
-    formatter = logging.Formatter('[%(asctime)s] %(levelname)s | %(message)s', '%Y-%m-%d %H:%M:%S')
+    formatter = logging.Formatter('[%(asctime)s] %(name)s | %(levelname)s | %(message)s', '%Y-%m-%d %H:%M:%S')
     
     console = logging.StreamHandler()
     console.setLevel(logging.INFO)
