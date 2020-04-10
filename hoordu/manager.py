@@ -25,7 +25,7 @@ class manager(object):
     
     def register_service(self, name):
         self.logger.info('registering service: %s', name)
-        service = self.session.query(models.Service).filter(models.Service.name==name).one_or_none()
+        service = self.session.query(models.Service).filter(models.Service.name == name).one_or_none()
         
         if service is not None:
             self.logger.info('service already exists: %s', name)
@@ -46,6 +46,9 @@ class manager(object):
     
     def commit(self):
         return self.session.commit()
+    
+    def rollback(self):
+        return self.session.rollback()
     
     def get_tag(self, **kwargs):
         tag = self.session.query(models.Tag).filter_by(**kwargs).one_or_none()
@@ -85,7 +88,7 @@ class manager(object):
             self.logger.info('importing original file, move: %r', move)
             pathlib.Path(dst).parent.mkdir(parents=True, exist_ok=True)
             mvfun(orig, dst)
-            file.file_present = True
+            file.present = True
         
         if thumb is not None:
             self.logger.info('importing thumbnail, move: %r', move)

@@ -17,6 +17,10 @@ class hoordu(object):
         
         self.logger = self.manager.logger
     
+    def create_all(self):
+        self.logger.info('creating all relations in the database')
+        models.Base.metadata.create_all(self.engine)
+    
     def get_manager(self, name='hoordu'):
         mgr = self.managers.get(name)
         if mgr is not None:
@@ -25,8 +29,3 @@ class hoordu(object):
             mgr = manager(name, self.config, self._Session())
             self.managers[name] = mgr
             return mgr
-    
-    def create_all(self):
-        self.logger.info('creating all relations in the database')
-        models.Base.metadata.create_all(self.engine)
-    
