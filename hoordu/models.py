@@ -73,6 +73,11 @@ class Tag(Base):
         Index('idx_tags', 'category', 'tag', unique=True),
     )
     
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        if 'flags' not in kwargs:
+            self.flags = TagFlags.none
+    
     def __str__(self):
         return '{}:{}'.format(self.category.name, self.tag)
 
@@ -83,7 +88,7 @@ class PostFlags(IntFlag):
     removed = auto() # if the post was deleted in the remote host
 
 class PostType(Enum):
-    pool = 1 # bundle of unrelated files (or just a single file)
+    set = 1 # bundle of unrelated files (or just a single file)
     collection = 2 # the files are related in some way
     # more types can be added as needed
 
@@ -112,22 +117,27 @@ class Post(Base):
     favorite = FlagProperty('flags', PostFlags.favorite)
     hidden = FlagProperty('flags', PostFlags.hidden)
     removed = FlagProperty('flags', PostFlags.removed)
+    
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        if 'flags' not in kwargs:
+            self.flags = PostFlags.none
 
 
-class ServiceSetupState(Enum):
+class SourceSetupState(Enum):
     ready = 0
-    config = 1 # the service is missing vital configuration parameters
-    setup = 2 # the service is configured properly, but it needs extra user input (e.g. authentication)
+    config = 1 # the post source is missing vital configuration parameters
+    setup = 2 # the post source is configured properly, but it needs extra user input (e.g. authentication)
 
-class Service(Base):
-    __tablename__ = 'service'
+class Source(Base):
+    __tablename__ = 'source'
     
     id = Column(Integer, primary_key=True)
     
     name = Column(String(length=255, collation='NOCASE'), nullable=False, index=True, unique=True)
     version = Column(Integer, nullable=False)
     config = Column(Text)
-    setup_state = Column(ChoiceType(ServiceSetupState, impl=Integer()), default=ServiceSetupState.config, nullable=False)
+    setup_state = Column(ChoiceType(SourceSetupState, impl=Integer()), default=SourceSetupState.config, nullable=False)
     
     metadata_ = Column('metadata', Text)
     
@@ -135,7 +145,7 @@ class Service(Base):
     updated_time = Column(DateTime(timezone=False), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     
     # references
-    subscriptions = relationship('Subscription', back_populates='service')
+    subscriptions = relationship('Subscription', back_populates='source')
 
 remote_post_tag = Table('remote_post_tag', Base.metadata,
     Column('post_id', Integer, ForeignKey('remote_post.id', ondelete='CASCADE'), nullable=False, index=True),
@@ -147,7 +157,7 @@ class RemoteTag(Base):
     
     id = Column(Integer, primary_key=True)
     
-    service_id = Column(Integer, ForeignKey('service.id', ondelete='CASCADE'), nullable=False)
+    source_id = Column(Integer, ForeignKey('source.id', ondelete='CASCADE'), nullable=False)
     
     category = Column(ChoiceType(TagCategory, impl=Integer()), nullable=False)
     tag = Column(String(length=255, collation='NOCASE'), nullable=False)
@@ -160,15 +170,20 @@ class RemoteTag(Base):
     updated_time = Column(DateTime(timezone=False), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     
     # references
-    service = relationship('Service')
+    source = relationship('Source')
     translation = relationship('TagTranslation', back_populates='remote_tag')
     
     # flags
     favorite = FlagProperty('flags', TagFlags.favorite)
     
     __table_args__ = (
-        Index('idx_remote_tags', 'service_id', 'category', 'tag', unique=True),
+        Index('idx_remote_tags', 'source_id', 'category', 'tag', unique=True),
     )
+    
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        if 'flags' not in kwargs:
+            self.flags = TagFlags.none
     
     def __str__(self):
         return '{}:{}'.format(self.category.name, self.tag)
@@ -178,7 +193,7 @@ class RemotePost(Base):
     
     id = Column(Integer, primary_key=True)
     
-    service_id = Column(Integer, ForeignKey('service.id', ondelete='CASCADE'), nullable=False)
+    source_id = Column(Integer, ForeignKey('source.id', ondelete='CASCADE'), nullable=False)
     
     # the minimum identifier for the post
     remote_id = Column(Text, nullable=False)
@@ -196,7 +211,7 @@ class RemotePost(Base):
     updated_time = Column(DateTime(timezone=False), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     
     # references
-    service = relationship('Service')
+    source = relationship('Source')
     tags = relationship('RemoteTag', secondary=remote_post_tag)
     files = relationship('File', back_populates='remote')
     
@@ -206,8 +221,13 @@ class RemotePost(Base):
     removed = FlagProperty('flags', PostFlags.removed)
     
     __table_args__ = (
-        Index('idx_remote_posts', 'service_id', 'remote_id', unique=True),
+        Index('idx_remote_posts', 'source_id', 'remote_id', unique=True),
     )
+    
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        if 'flags' not in kwargs:
+            self.flags = PostFlags.none
 
 
 class FileFlags(IntFlag):
@@ -252,6 +272,11 @@ class File(Base):
     processed = FlagProperty('flags', FileFlags.processed)
     present = FlagProperty('flags', FileFlags.present)
     thumb_present = FlagProperty('flags', FileFlags.thumb_present)
+    
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        if 'flags' not in kwargs:
+            self.flags = FileFlags.none
 
 
 subscription_post = Table('feed', Base.metadata,
@@ -268,7 +293,7 @@ class Subscription(Base):
     
     id = Column(Integer, primary_key=True)
     
-    service_id = Column(Integer, ForeignKey('service.id', ondelete='CASCADE'), nullable=False)
+    source_id = Column(Integer, ForeignKey('source.id', ondelete='CASCADE'), nullable=False)
     
     name = Column(Text, nullable=False, unique=True, index=True)
     
@@ -281,11 +306,16 @@ class Subscription(Base):
     updated_time = Column(DateTime(timezone=False), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     
     # references
-    service = relationship('Service', back_populates='subscriptions')
+    source = relationship('Source', back_populates='subscriptions')
     feed = relationship('RemotePost', secondary=subscription_post)
     
     # flags
     completed = FlagProperty('flags', SubscriptionFlags.completed)
+    
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        if 'flags' not in kwargs:
+            self.flags = SubscriptionFlags.none
 
 
 class TagTranslation(Base):

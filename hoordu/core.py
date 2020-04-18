@@ -11,7 +11,7 @@ def _template_format(format, **kwargs):
     if format is not None:
         return Template(format).substitute(kwargs)
 
-class manager(object):
+class core(object):
     def __init__(self, name, config, session):
         self.name = name
         self.config = config
@@ -22,21 +22,6 @@ class manager(object):
         
         self.filespath = '{}/files'.format(self.config.base_path)
         self.thumbspath = '{}/thumbs'.format(self.config.base_path)
-    
-    def register_service(self, name):
-        self.logger.info('registering service: %s', name)
-        service = self.session.query(models.Service).filter(models.Service.name == name).one_or_none()
-        
-        if service is not None:
-            self.logger.info('service already exists: %s', name)
-            return service
-            
-        else:
-            service = models.Service(name=name, version=0)
-            self.add(service)
-            self.flush()
-            self.logger.info('registered service: %s', name)
-            return service
     
     def add(self, *args):
         return self.session.add_all(args)
@@ -49,6 +34,21 @@ class manager(object):
     
     def rollback(self):
         return self.session.rollback()
+    
+    def register_source(self, name):
+        self.logger.info('registering source: %s', name)
+        source = self.session.query(models.Source).filter(models.Source.name == name).one_or_none()
+        
+        if source is not None:
+            self.logger.info('source already exists: %s', name)
+            return source
+            
+        else:
+            source = models.Source(name=name, version=0)
+            self.add(source)
+            self.flush()
+            self.logger.info('registered source: %s', name)
+            return source
     
     def get_tag(self, **kwargs):
         tag = self.session.query(models.Tag).filter_by(**kwargs).one_or_none()
@@ -96,21 +96,21 @@ class manager(object):
             mvfun(thumb, tdst)
             file.thumb_present = True
     
-    def _file_slot(self, file):
-        return file.id // self.config.files_slot_size
+    def _file_bucket(self, file):
+        return file.id // self.config.files_bucket_size
     
     def _get_file_paths(self, file):
-        file_slot = self._file_slot(file)
+        file_bucket = self._file_bucket(file)
         
         if file.ext:
-            filepath = '{}/{}/{}.{}'.format(self.filespath, file_slot, file.id, file.ext)
+            filepath = '{}/{}/{}.{}'.format(self.filespath, file_bucket, file.id, file.ext)
         else:
-            filepath = '{}/{}/{}'.format(self.filespath, file_slot, file.id)
+            filepath = '{}/{}/{}'.format(self.filespath, file_bucket, file.id)
         
         if file.thumb_ext:
-            thumbpath = '{}/{}/{}.{}'.format(self.thumbspath, file_slot, file.id, file.thumb_ext)
+            thumbpath = '{}/{}/{}.{}'.format(self.thumbspath, file_bucket, file.id, file.thumb_ext)
         else:
-            thumbpath = '{}/{}/{}'.format(self.thumbspath, file_slot, file.id)
+            thumbpath = '{}/{}/{}'.format(self.thumbspath, file_bucket, file.id)
         
         return filepath, thumbpath
     

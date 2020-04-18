@@ -1,6 +1,6 @@
 from . import models
 from .util import *
-from .manager import manager
+from .core import core
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -12,20 +12,37 @@ class hoordu(object):
         self.engine = create_engine(self.config.database, echo=self.config.get('debug', False))
         self._Session = sessionmaker(bind=self.engine)
         
-        self.managers = {}
-        self.manager = self.get_manager()
+        self.cores = {}
+        self.core = self._core()
+        self.logger = self.core.logger
         
-        self.logger = self.manager.logger
+        self.plugins = {}
+    
+    def _core(self, name='hoordu'):
+        c = self.cores.get(name)
+        if c is not None:
+            return c
+        else:
+            c = core(name, self.config, self._Session())
+            self.cores[name] = c
+            return c
     
     def create_all(self):
         self.logger.info('creating all relations in the database')
         models.Base.metadata.create_all(self.engine)
     
-    def get_manager(self, name='hoordu'):
-        mgr = self.managers.get(name)
-        if mgr is not None:
-            return mgr
-        else:
-            mgr = manager(name, self.config, self._Session())
-            self.managers[name] = mgr
-            return mgr
+    def init_plugin(self, Plugin, parameters):
+        name = Plugin.name
+        
+        plugin = self.plugins.get(name)
+        if plugin is not None:
+            return True, plugin
+        
+        core = self._core(name)
+        success, plugin = Plugin.init(core, parameters=parameters)
+        
+        if success:
+            self.plugins[name] = plugin
+        
+        return success, plugin
+    
