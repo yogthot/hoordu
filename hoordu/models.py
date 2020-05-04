@@ -286,7 +286,6 @@ subscription_post = Table('feed', Base.metadata,
 
 class SubscriptionFlags(IntFlag):
     none = 0
-    completed = auto() # if there are no posts after the tail
 
 class Subscription(Base):
     __tablename__ = 'subscription'
@@ -310,7 +309,7 @@ class Subscription(Base):
     feed = relationship('RemotePost', secondary=subscription_post)
     
     # flags
-    completed = FlagProperty('flags', SubscriptionFlags.completed)
+    # no flags yet
     
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
