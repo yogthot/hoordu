@@ -5,10 +5,11 @@ import logging
 import importlib.util
 from importlib.machinery import SourceFileLoader
 
-class _module(object):
+class _config_module(object):
     def __init__(self, filename=None):
         if filename is not None:
-            module_name = Path(filename).name.split('.')[0]
+            self.__name = Path(filename).name
+            module_name = self.__name.split('.')[0]
             # force the file to be loaded as source
             loader = SourceFileLoader(module_name, filename)
             spec = importlib.util.spec_from_loader(module_name, loader)
@@ -19,7 +20,10 @@ class _module(object):
             self.__module = object()
     
     def __getattr__(self, name):
-        return getattr(self.__module, name)
+        try:
+            return getattr(self.__module, name)
+        except AttributeError:
+            raise AttributeError('config {} has no attribute {}'.format(repr(self.__name), repr(name)))
     
     def get(self, name, default=None):
         return getattr(self.__module, name, default)
@@ -37,7 +41,7 @@ def load_config(filename=None, env=None):
     else:
         raise TypeError('both filename and env are None')
     
-    return _module(path)
+    return _config_module(path)
 
 
 def get_logger(name, filename=None, level=logging.WARNING):
