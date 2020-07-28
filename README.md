@@ -17,7 +17,7 @@ Ideally hoordu should communicate with downloader plugins to get the content fro
 ## Requirements
 
 I recommend using a [PostgreSQL](https://www.postgresql.org/) backend due to the way this is supposed to work, but sqlite should be compatible as well.
-It's also up to you to pick the [SQLAlchemy](https://www.sqlalchemy.org/) driver you want to communicate with the database, along with any system depepndencies.
+It's also up to you to pick the [SQLAlchemy](https://www.sqlalchemy.org/) driver you want to communicate with the database, along with any system dependencies.
 
 
 ## Configuration
