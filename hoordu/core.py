@@ -69,7 +69,7 @@ class core(object):
         return tag
     
     def import_file(self, file, orig=None, thumb=None, move=False):
-        self.logger.info('importing file: %s, of post: %s', file.id, file.remote_id)
+        self.logger.info('importing file: %s, from remote post: %s', file.id, file.remote_id)
         self.logger.debug('file: %s', orig)
         self.logger.debug('thumb: %s', thumb)
         mvfun = shutil.move if move else shutil.copy

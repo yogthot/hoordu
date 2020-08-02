@@ -196,7 +196,7 @@ class RemotePost(Base):
     source_id = Column(Integer, ForeignKey('source.id', ondelete='CASCADE'), nullable=False)
     
     # the minimum identifier for the post
-    remote_id = Column(Text, nullable=False)
+    original_id = Column(Text, nullable=False)
     
     title = Column(Text(collation='NOCASE'))
     comment = Column(Text(collation='NOCASE'))
@@ -214,6 +214,7 @@ class RemotePost(Base):
     source = relationship('Source')
     tags = relationship('RemoteTag', secondary=remote_post_tag)
     files = relationship('File', back_populates='remote')
+    related = relationship('Related', back_populates='related_to', foreign_keys='[Related.related_to_id]')
     
     # flags
     favorite = FlagProperty('flags', PostFlags.favorite)
@@ -221,7 +222,7 @@ class RemotePost(Base):
     removed = FlagProperty('flags', PostFlags.removed)
     
     __table_args__ = (
-        Index('idx_remote_posts', 'source_id', 'remote_id', unique=True),
+        Index('idx_remote_posts', 'source_id', 'original_id', unique=True),
     )
     
     def __init__(self, **kwargs):
@@ -330,4 +331,20 @@ class TagTranslation(Base):
     # references
     remote_tag = relationship('RemoteTag', back_populates='translation')
     tag = relationship('Tag')
+
+class Related(Base):
+    __tablename__ = 'related'
+    
+    id = Column(Integer, primary_key=True)
+    # the post this url is related to
+    related_to_id = Column(Integer, ForeignKey('remote_post.id', ondelete='CASCADE'))
+    
+    # the post the url corresponds to, in case it was downloaded
+    remote_id = Column(Integer, ForeignKey('remote_post.id', ondelete='SET NULL'))
+    
+    url = Column(Text, nullable=False)
+    
+    related_to = relationship('RemotePost', back_populates='related', foreign_keys=[related_to_id])
+    remote = relationship('RemotePost', foreign_keys=[remote_id])
+
 
