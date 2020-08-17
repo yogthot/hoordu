@@ -1,6 +1,7 @@
 from hashlib import md5 as _md5
+from string import Template
 
-__all__ = ['mime_from_file', 'md5']
+__all__ = ['mime_from_file', 'md5', 'template_format']
 
 # handle both python-magic libraries
 import magic
@@ -18,3 +19,8 @@ def md5(fname):
         for chunk in iter(lambda: f.read(4096), b''):
             hash.update(chunk)
     return hash.digest()
+
+def template_format(format, **kwargs):
+    if format is not None:
+        return Template(format).substitute(kwargs)
+

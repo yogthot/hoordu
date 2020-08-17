@@ -1,4 +1,6 @@
 
+__all__ = ['FetchDirection']
+
 from enum import Enum
 
 class FetchDirection(Enum):

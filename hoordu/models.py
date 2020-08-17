@@ -23,7 +23,7 @@ def compile_unicode(element, compiler, **kw):
     return compiler.visit_unicode(element, **kw)
 
 
-class FlagProperty(object):
+class FlagProperty:
     def __init__(self, attr, flag):
         self.attr = attr
         self.flag = flag
@@ -124,11 +124,6 @@ class Post(Base):
             self.flags = PostFlags.none
 
 
-class SourceSetupState(Enum):
-    ready = 0
-    config = 1 # the post source is missing vital configuration parameters
-    setup = 2 # the post source is configured properly, but it needs extra user input (e.g. authentication)
-
 class Source(Base):
     __tablename__ = 'source'
     
@@ -137,9 +132,10 @@ class Source(Base):
     name = Column(String(length=255, collation='NOCASE'), nullable=False, index=True, unique=True)
     version = Column(Integer, nullable=False)
     config = Column(Text)
-    setup_state = Column(ChoiceType(SourceSetupState, impl=Integer()), default=SourceSetupState.config, nullable=False)
     
     metadata_ = Column('metadata', Text)
+    
+    hoordu_config = Column(Text)
     
     created_time = Column(DateTime(timezone=False), default=datetime.utcnow, nullable=False)
     updated_time = Column(DateTime(timezone=False), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
@@ -197,6 +193,7 @@ class RemotePost(Base):
     
     # the minimum identifier for the post
     original_id = Column(Text, nullable=False)
+    url = Column(Text)
     
     title = Column(Text(collation='NOCASE'))
     comment = Column(Text(collation='NOCASE'))

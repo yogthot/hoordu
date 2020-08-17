@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 import re
-from setuptools import setup
+from setuptools import setup, find_packages
 
 with open('hoordu/_version.py') as f:
     content = f.read()
@@ -20,7 +20,7 @@ setup(
     license='BSD-3-Clause',
     author='patchon',
     author_email='patchon@myon.moe',
-    packages=['hoordu'],
+    packages=find_packages(include=['hoordu', 'hoordu.*']),
     include_package_data=True,
     install_requires=[l.strip() for l in open('requirements.txt').readlines()]
 )

@@ -2,7 +2,7 @@
 import hoordu
 
 if __name__ == '__main__':
-    conf = hoordu.load_config('config.conf')
+    conf = hoordu.Settings.from_module('config.conf')
     conf.debug = True
     hrd = hoordu.hoordu(conf)
     hrd.create_all()
