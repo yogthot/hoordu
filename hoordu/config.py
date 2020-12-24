@@ -7,7 +7,7 @@ import importlib.util
 from importlib.machinery import SourceFileLoader
 
 
-class Settings(dict):
+class Dynamic(dict):
     def __getattr__(self, name):
         try:
             return self[name]
@@ -44,7 +44,7 @@ class Settings(dict):
     @classmethod
     def from_json(cls, json_string):
         if json_string is None:
-            return Settings()
+            return cls()
         
         s = json.loads(json_string, object_hook=cls)
         

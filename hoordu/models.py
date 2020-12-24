@@ -90,6 +90,7 @@ class PostFlags(IntFlag):
 class PostType(Enum):
     set = 1 # bundle of unrelated files (or just a single file)
     collection = 2 # the files are related in some way
+    blog = 3 # text with files in between (comment is formatted as json)
     # more types can be added as needed
 
 class Post(Base):
@@ -250,6 +251,7 @@ class File(Base):
     
     # hash is md5 for compatibility
     hash = Column(LargeBinary(length=16), index=True)
+    filename = Column(Text)
     mime = Column(String(length=255, collation='NOCASE'))
     ext = Column(String(length=20, collation='NOCASE'))
     thumb_ext = Column(String(length=20, collation='NOCASE'))
@@ -339,7 +341,7 @@ class Related(Base):
     # the post the url corresponds to, in case it was downloaded
     remote_id = Column(Integer, ForeignKey('remote_post.id', ondelete='SET NULL'))
     
-    url = Column(Text, nullable=False)
+    url = Column(Text)
     
     related_to = relationship('RemotePost', back_populates='related', foreign_keys=[related_to_id])
     remote = relationship('RemotePost', foreign_keys=[remote_id])

@@ -1,6 +1,6 @@
 
 from .fields import *
-from ..config import Settings
+from ..config import Dynamic
 
 __all__ = [
     'Form',
@@ -29,7 +29,7 @@ class Form:
             entry.clear()
     
     def fill(self, values):
-        for id, value in values:
+        for id, value in values.items():
             try: self._entries[id].fill(value)
             except KeyError: pass
     
@@ -42,7 +42,7 @@ class Form:
     
     @property
     def value(self):
-        return Settings({entry.id: entry.value for entry in self.entries if hasattr(entry, 'value')})
+        return Dynamic({entry.id: entry.value for entry in self.entries if hasattr(entry, 'value')})
 
 class Section(Form):
     def __init__(self, label, *entries, id=None):

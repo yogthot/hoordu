@@ -6,6 +6,8 @@ import pathlib
 import shutil
 import logging
 
+from lru import LRU
+
 class plugin_core:
     def __init__(self, name, hrd, session):
         self.name = name
@@ -16,10 +18,15 @@ class plugin_core:
         self.logger = get_logger(self.name, log_file, self.hrd.config.get('log_level', logging.WARNING))
         
         self._init_source()
-        self.config = Settings.from_json(self.source.config)
+        self.config = Dynamic.from_json(self.source.config)
+        
+        # (category, tag) -> RemoteTag
+        self._tag_cache = LRU(100)
     
     def _init_source(self):
-        self.source = self.session.query(Source).filter(Source.name == self.name).one_or_none()
+        self.source = self.session.query(Source) \
+                .filter(Source.name == self.name) \
+                .one_or_none()
         
         if self.source is None:
             self.source = Source(name=self.name, version=0)
@@ -39,12 +46,19 @@ class plugin_core:
     def rollback(self):
         return self.session.rollback()
     
-    def get_remote_tag(self, **kwargs):
-        tag = self.session.query(RemoteTag).filter_by(**kwargs).one_or_none()
+    def get_remote_tag(self, category, tagstr):
+        tag = self._tag_cache.get((category, tagstr))
         
         if tag is None:
-            tag = RemoteTag(**kwargs)
-            self.session.add(tag)
+            tag = self.session.query(RemoteTag) \
+                    .filter(RemoteTag.source==self.source, RemoteTag.category==category, RemoteTag.tag==tagstr) \
+                    .one_or_none()
+            
+            if tag is None:
+                tag = RemoteTag(source=self.source, category=category, tag=tagstr)
+                self.session.add(tag)
+            
+            self._tag_cache[category, tagstr] = tag
         
         return tag
     
@@ -69,9 +83,11 @@ class plugin_core:
             pathlib.Path(dst).parent.mkdir(parents=True, exist_ok=True)
             mvfun(orig, dst)
             file.present = True
+            self.session.add(file)
         
         if thumb is not None:
             self.logger.info('importing thumbnail, move: %r', move)
             pathlib.Path(tdst).parent.mkdir(parents=True, exist_ok=True)
             mvfun(thumb, tdst)
             file.thumb_present = True
+            self.session.add(file)
