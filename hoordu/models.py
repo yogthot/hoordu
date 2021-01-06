@@ -256,6 +256,8 @@ class File(Base):
     ext = Column(String(length=20, collation='NOCASE'))
     thumb_ext = Column(String(length=20, collation='NOCASE'))
     
+    metadata_ = Column('metadata', Text)
+    
     flags = Column(Integer, default=FileFlags.none, nullable=False)
     
     created_time = Column(DateTime(timezone=False), default=datetime.utcnow, nullable=False)
@@ -286,6 +288,7 @@ subscription_post = Table('feed', Base.metadata,
 
 class SubscriptionFlags(IntFlag):
     none = 0
+    enabled = auto() # won't auto update if disabled
 
 class Subscription(Base):
     __tablename__ = 'subscription'
@@ -294,7 +297,7 @@ class Subscription(Base):
     
     source_id = Column(Integer, ForeignKey('source.id', ondelete='CASCADE'), nullable=False)
     
-    name = Column(Text, nullable=False, unique=True, index=True)
+    name = Column(Text, nullable=False)
     
     options = Column(Text)
     state = Column(Text)
@@ -309,12 +312,16 @@ class Subscription(Base):
     feed = relationship('RemotePost', secondary=subscription_post)
     
     # flags
-    # no flags yet
+    enabled = FlagProperty('flags', SubscriptionFlags.enabled)
+    
+    __table_args__ = (
+        Index('idx_subscription', 'source_id', 'name', unique=True),
+    )
     
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         if 'flags' not in kwargs:
-            self.flags = SubscriptionFlags.none
+            self.flags = SubscriptionFlags.enabled
 
 
 class TagTranslation(Base):
