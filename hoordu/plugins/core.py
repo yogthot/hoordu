@@ -14,8 +14,8 @@ class plugin_core:
         self.hrd = hrd
         self.session = session
         
-        log_file = template_format(self.hrd.config.get('log_file'), name=self.name)
-        self.logger = get_logger(self.name, log_file, self.hrd.config.get('log_level', logging.WARNING))
+        log_file = template_format(self.hrd.settings.get('log_file'), name=self.name)
+        self.logger = get_logger(self.name, log_file, self.hrd.settings.get('log_level', logging.WARNING))
         
         self._init_source()
         self.config = Dynamic.from_json(self.source.config)

@@ -1,5 +1,6 @@
 from datetime import datetime
 from enum import Enum, IntFlag, auto
+import json
 
 from sqlalchemy import Table, Column, Integer, String, Text, LargeBinary, DateTime, ForeignKey, Index, func
 from sqlalchemy.orm import relationship
@@ -9,6 +10,17 @@ from sqlalchemy_fulltext import FullText
 from sqlalchemy_utils import ChoiceType
 
 Base = declarative_base()
+
+class MetadataHelper:
+    def update_metadata(self, key, value):
+        metadata = json.loads(self.metadata_) if self.metadata_ else {}
+        if metadata.get(key) != value:
+            metadata[key] = value
+            self.metadata_ = json.dumps(metadata)
+            return True
+            
+        else:
+            return False
 
 # convert collations
 @compiles(String, 'postgresql')
@@ -93,7 +105,7 @@ class PostType(Enum):
     blog = 3 # text with files in between (comment is formatted as json)
     # more types can be added as needed
 
-class Post(Base):
+class Post(Base, MetadataHelper):
     __tablename__ = 'post'
     
     id = Column(Integer, primary_key=True)
@@ -125,7 +137,7 @@ class Post(Base):
             self.flags = PostFlags.none
 
 
-class Source(Base):
+class Source(Base, MetadataHelper):
     __tablename__ = 'source'
     
     id = Column(Integer, primary_key=True)
@@ -149,7 +161,7 @@ remote_post_tag = Table('remote_post_tag', Base.metadata,
     Column('tag_id', Integer, ForeignKey('remote_tag.id', ondelete='CASCADE'), nullable=False)
 )
 
-class RemoteTag(Base):
+class RemoteTag(Base, MetadataHelper):
     __tablename__ = 'remote_tag'
     
     id = Column(Integer, primary_key=True)
@@ -185,7 +197,7 @@ class RemoteTag(Base):
     def __str__(self):
         return '{}:{}'.format(self.category.name, self.tag)
 
-class RemotePost(Base):
+class RemotePost(Base, MetadataHelper):
     __tablename__ = 'remote_post'
     
     id = Column(Integer, primary_key=True)
@@ -238,7 +250,7 @@ class FileFlags(IntFlag):
     present = auto() # if the file is present on the disk
     thumb_present = auto() # if the thumbnail is present on the disk
 
-class File(Base):
+class File(Base, MetadataHelper):
     __tablename__ = 'file'
     
     id = Column(Integer, primary_key=True)

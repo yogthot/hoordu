@@ -6,7 +6,6 @@ import logging
 import importlib.util
 from importlib.machinery import SourceFileLoader
 
-
 class Dynamic(dict):
     def __getattr__(self, name):
         try:
@@ -27,8 +26,8 @@ class Dynamic(dict):
         return json.dumps(self)
     
     def to_file(self, filename):
-        with open(filename) as json_file:
-            return json.dump(self)
+        with open(filename, 'w+') as json_file:
+            json.dump(self, json_file)
     
     @classmethod
     def from_module(cls, filename):
@@ -63,6 +62,29 @@ class Dynamic(dict):
         
         return s
 
+class HoorduConfig:
+    def __init__(self, home):
+        self.home = Path(home)
+        self.settings = Dynamic.from_module(str(Path(home) / 'hoordu.conf'))
+        # path -> plugin
+        self._plugins = {}
+    
+    def _load_module(self, path):
+        module_name = '_hoordu_plugin.' + path.name.split('.')[0]
+        spec = importlib.util.spec_from_file_location(module_name, str(path))
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+    
+    def load_plugins(self):
+        plugin_scripts = [p.resolve() for p in (self.home / 'plugins').glob('*.py')]
+        for script in plugin_scripts:
+            if script not in self._plugins:
+                Plugin = self._load_module(script).Plugin
+                self._plugins[script] = Plugin
+                
+        return {p.name: p for p in self._plugins.values()}
+
 
 def get_logger(name, filename=None, level=logging.WARNING):
     logger = logging.getLogger(name)
@@ -87,4 +109,23 @@ def get_logger(name, filename=None, level=logging.WARNING):
     
     return logger
 
+def load_config():
+    paths = []
+    env_path = os.environ.get('HOORDU_HOME', None)
+    
+    if env_path is not None:
+        paths.append(env_path)
+    
+    paths.extend([
+        Path('~/.config/hoordu').expanduser().resolve(),
+        Path('/etc/hoordu').resolve(),
+    ])
+    
+    for path in paths:
+        try:
+            return HoorduConfig(path)
+        except:
+            pass
+    
+    raise FileNotFoundError('no configuration file found')
 

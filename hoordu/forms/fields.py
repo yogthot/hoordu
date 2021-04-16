@@ -10,7 +10,7 @@ __all__ = [
 ]
 
 class FormEntry:
-    def __init__(self, id=None, ):
+    def __init__(self, id=None):
         self.id = id
     
     def clear(self):
@@ -48,9 +48,6 @@ class Input(FormEntry):
     
     def fill(self, value):
         self._value = value
-    
-    def pre_validate(self):
-        pass
     
     def validate(self):
         self._errors = []
@@ -99,4 +96,8 @@ class ChoiceInput(Input):
     def _validate_choice(self, field=None):
         if self.value not in self.choices:
             raise StopValidation('{} is not a valid choice'.format(self.value))
+
+class FileInput(Input):
+    def __init__(self, label, validators=[], id=None):
+        super().__init__(label, validators, id)
 
