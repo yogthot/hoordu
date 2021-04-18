@@ -10,7 +10,8 @@ class PluginFeatures(IntFlag):
     reverse_search = auto()
 
 class SearchDetails:
-    def __init__(self, title=None, description=None, thumbnail_url=None, related_urls=[]):
+    def __init__(self, hint=None, title=None, description=None, thumbnail_url=None, related_urls=[]):
+        self.hint = hint
         self.title = title
         self.description = description
         self.thumbnail_url = thumbnail_url

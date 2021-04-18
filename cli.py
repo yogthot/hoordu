@@ -146,7 +146,44 @@ def safe_fetch(plugin, it, direction, n):
                     raise
 
 def process_url(hrd, url):
-    hrd.load_plugins()
+    plugins = hrd.load_plugins()
+    
+    for plugin in plugins.values():
+        options = plugin.parse_url(url)
+        
+        if isinstance(options, str):
+            plugin.download(options)
+        
+        elif isinstance(options, hoordu.Dynamic):
+            details = plugin.get_search_details(options)
+            
+            if details is not None:
+                print("""
+hint: {}
+title: {}
+description:
+    {}
+related:
+    {}
+                """.format(details.hint,
+                            details.title,
+                            details.description.replace('\n', '\n    '),
+                            '\n    '.join(details.related_urls)).strip())
+                
+                v = input('subscribe to this url? (Yn) ').lower()
+                if not v: v = 'y'
+                if v == 'y':
+                    plugin.create_subscription(details.hint, options=options)
+                
+            else:
+                sub_name = input('pick a name for the subscription: ')
+                if sub_name:
+                    plugin.create_subscription(sub_name, options=options)
+            
+        else:
+            continue
+        
+        return
 
 if __name__ == '__main__':
     if len(sys.argv) == 1:
@@ -195,7 +232,7 @@ if __name__ == '__main__':
                     print('creating subscription {0} for {1}'.format(repr(sub_name), url))
                     options = plugin.parse_url(url)
                     if isinstance(options, hoordu.Dynamic):
-                        sub = plugin.create_subscription(sub_name, options)
+                        sub = plugin.create_subscription(sub_name, options=options)
                         core.commit()
                     else:
                         fail('invalid url')

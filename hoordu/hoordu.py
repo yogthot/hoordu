@@ -6,12 +6,13 @@ from . import _version
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+import packaging.version
 
 import logging
 
 class hoordu:
     def __init__(self, config):
-        self.version = _version.__version__
+        self.version = packaging.version.parse(_version.__version__)
         
         self.config = config
         self.settings = config.settings
@@ -27,7 +28,7 @@ class hoordu:
         
         self.plugin_cores = {}
         self._plugin_ctors = {}
-        self.plugins = {}
+        self._plugins = {}
         
         self.filespath = '{}/files'.format(self.settings.base_path)
         self.thumbspath = '{}/thumbs'.format(self.settings.base_path)
@@ -62,11 +63,11 @@ class hoordu:
     def _init_plugin(self, Plugin, parameters=None):
         name = Plugin.name
         
-        plugin = self.plugins.get(name)
+        plugin = self._plugins.get(name)
         if plugin is not None:
             return True, plugin
         
-        if not self._is_plugin_supported(Plugin.version):
+        if not self._is_plugin_supported(Plugin.required_hoordu):
             raise ValueError('plugin {} is unsupported'.format(Plugin.name))
         
         core = self._get_plugin_core(name)
@@ -75,21 +76,25 @@ class hoordu:
         
         if success:
             core.commit()
-            self.plugins[name] = plugin
+            self._plugins[name] = plugin
         
         return success, plugin
     
     def _is_plugin_supported(self, version):
-        return True
+        version = packaging.version.parse(version)
+        # same major, lesser or equal to current
+        return version.major == self.version.major and self.version >= version
     
     def load_plugins(self):
         self._plugin_ctors.update(self.config.load_plugins())
         for Plugin in self._plugin_ctors.values():
-            if self._is_plugin_supported(Plugin.version):
+            if self._is_plugin_supported(Plugin.required_hoordu):
                 self._init_plugin(Plugin)
+        
+        return self.plugins
     
     def load_plugin(self, name, parameters=None):
-        plugin = self.plugins.get(name)
+        plugin = self._plugins.get(name)
         if plugin is not None:
             return True, plugin
         
@@ -105,6 +110,10 @@ class hoordu:
             return self._init_plugin(Plugin, parameters)
         
         raise ValueError('plugin {} does not exist'.format(name))
+    
+    @property
+    def plugins(self):
+        return dict(self._plugins)
     
     def _file_bucket(self, file):
         return file.id // self.settings.files_bucket_size

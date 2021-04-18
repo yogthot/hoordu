@@ -11,7 +11,6 @@ Ideally hoordu should communicate with downloader plugins to get the content fro
 
 - PostgreSQL full text search
 - Thumbnail generation
-- Plugin integration
 
 
 ## Requirements
