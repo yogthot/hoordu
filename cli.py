@@ -12,7 +12,7 @@ from hoordu.plugins import FetchDirection
 from hoordu.forms import *
 
 def usage():
-    print('python3 {0} <plugin> <command> [command arguments]'.format(sys.argv[0]))
+    print('python {0} <plugin> <command> [command arguments]'.format(sys.argv[0]))
     print('')
     print('available commands:')
     print('    download <url>')
@@ -153,6 +153,7 @@ def process_url(hrd, url):
         
         if isinstance(options, str):
             plugin.download(options)
+            plugin.core.commit()
         
         elif isinstance(options, hoordu.Dynamic):
             details = plugin.get_search_details(options)
@@ -174,11 +175,13 @@ related:
                 if not v: v = 'y'
                 if v == 'y':
                     plugin.create_subscription(details.hint, options=options)
+                    plugin.core.commit()
                 
             else:
                 sub_name = input('pick a name for the subscription: ')
                 if sub_name:
                     plugin.create_subscription(sub_name, options=options)
+                    plugin.core.commit()
             
         else:
             continue
