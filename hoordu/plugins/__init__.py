@@ -1,3 +1,3 @@
 from .common import *
-from .core import plugin_core
+from .core import PluginCore
 from .base import *

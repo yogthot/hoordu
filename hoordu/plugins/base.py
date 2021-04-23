@@ -1,26 +1,20 @@
 from enum import IntFlag, auto
 from .common import *
 from ..config import *
-
-class PluginFeatures(IntFlag):
-    none = 0
-    download = auto()
-    search = auto()
-    search_details = auto()
-    reverse_search = auto()
-
-class SearchDetails:
-    def __init__(self, hint=None, title=None, description=None, thumbnail_url=None, related_urls=[]):
-        self.hint = hint
-        self.title = title
-        self.description = description
-        self.thumbnail_url = thumbnail_url
-        self.related_urls = related_urls
+from ..models import *
 
 class APIError(Exception):
     pass
 
-class BaseIterator:
+class SearchDetails:
+    def __init__(self, hint=None, title=None, description=None, thumbnail_url=None, related_urls=set()):
+        self.hint = hint
+        self.title = title
+        self.description = description
+        self.thumbnail_url = thumbnail_url
+        self.related_urls = set(related_urls)
+
+class IteratorBase:
     def __init__(self, plugin, subscription=None, options=None):
         self.plugin = plugin
         self.subscription = subscription
@@ -54,7 +48,7 @@ class BaseIterator:
         
         raise NotImplementedError
 
-class BasePlugin:
+class PluginBase:
     name = None
     version = 0
     required_hoordu = '0.0.0'
@@ -208,3 +202,34 @@ class BasePlugin:
         
         return self.iterator(self, subscription=subscription)
 
+class ReverseSearchPluginBase(PluginBase):
+    def search(self, options):
+        """
+        By extending ReverseSearchPluginBase, this method may be called with the following
+        types of options objects: `{'url': 'https://...'}` and `{'path': '/home/...'}`.
+        
+        Reverse searching works the same as regular searching, but the RemotePosts returned
+        need to include at least a thumbnail and related url.
+        """
+        
+        if self.iterator is None:
+            raise NotImplementedError
+        
+        options = Dynamic.from_json(options)
+        
+        return self.iterator(self, options=options)
+    
+    def create_subscription(self, name, options=None, iterator=None):
+        """
+        This method is out of scope for reverse search plugins.
+        """
+        
+        raise NotImplementedError
+    
+    def get_iterator(self, subscription):
+        """
+        This method is out of scope for reverse search plugins.
+        """
+        
+        raise NotImplementedError
+    

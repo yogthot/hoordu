@@ -8,14 +8,14 @@ import logging
 
 from lru import LRU
 
-class plugin_core:
+class PluginCore:
     def __init__(self, name, hrd, session):
         self.name = name
-        self.hrd = hrd
+        self._hrd = hrd
         self.session = session
         
-        log_file = template_format(self.hrd.settings.get('log_file'), name=self.name)
-        self.logger = get_logger(self.name, log_file, self.hrd.settings.get('log_level', logging.WARNING))
+        log_file = template_format(self._hrd.settings.get('log_file'), name=self.name)
+        self.logger = get_logger(self.name, log_file, self._hrd.settings.get('log_level', logging.WARNING))
         
         self._init_source()
         self.config = Dynamic.from_json(self.source.config)
@@ -62,6 +62,10 @@ class plugin_core:
         
         return tag
     
+    def download(self, url, dst_path=None, suffix=None, **kwargs):
+        self.logger.debug('downloading %s', url)
+        return self._hrd.requests.download(url, dst_path=dst_path, suffix=suffix, **kwargs)
+    
     def import_file(self, file, orig=None, thumb=None, move=False):
         self.logger.info('importing file: %s, from remote post: %s', file.id, file.remote_id)
         self.logger.debug('file: %s', orig)
@@ -76,7 +80,7 @@ class plugin_core:
         if thumb is not None:
             file.thumb_ext = ''.join(pathlib.Path(thumb).suffixes)[1:]
         
-        dst, tdst = self.hrd.get_file_paths(file)
+        dst, tdst = self._hrd.get_file_paths(file)
         
         if orig is not None:
             self.logger.info('importing original file, move: %r', move)

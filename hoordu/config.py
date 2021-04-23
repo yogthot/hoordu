@@ -65,7 +65,7 @@ class Dynamic(dict):
 class HoorduConfig:
     def __init__(self, home):
         self.home = Path(home)
-        self.settings = Dynamic.from_module(str(Path(home) / 'hoordu.conf'))
+        self.settings = Dynamic.from_module(str(self.home / 'hoordu.conf'))
         # path -> plugin
         self._plugins = {}
     

@@ -1,7 +1,8 @@
 from . import models
 from .util import *
 from .config import get_logger
-from .plugins import plugin_core
+from .plugins import PluginCore
+from .requests import DefaultRequestManager
 from . import _version
 
 from sqlalchemy import create_engine
@@ -19,8 +20,10 @@ class hoordu:
         
         self.engine = create_engine(self.settings.database, echo=self.settings.get('debug', False))
         self._Session = sessionmaker(bind=self.engine)
-        
         self.session = self._Session()
+        
+        self.requests = DefaultRequestManager()
+        self.requests.headers['User-Agent'] = '{}/{}'.format(_version.__fulltitle__, _version.__version__)
         
         name = 'hoordu'
         log_file = template_format(self.settings.get('log_file'), name=name)
@@ -55,7 +58,7 @@ class hoordu:
             return c
         else:
             session = self._Session()
-            c = plugin_core(name, self, session)
+            c = PluginCore(name, self, session)
             
             self.plugin_cores[name] = c
             return c
