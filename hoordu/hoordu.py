@@ -2,6 +2,7 @@ from . import models
 from .util import *
 from .config import get_logger
 from .plugins import PluginCore
+from .plugins.filesystem import Filesystem
 from .requests import DefaultRequestManager
 from . import _version
 
@@ -35,6 +36,8 @@ class hoordu:
         
         self.filespath = '{}/files'.format(self.settings.base_path)
         self.thumbspath = '{}/thumbs'.format(self.settings.base_path)
+        
+        self._init_plugin(Filesystem)
     
     def create_all(self):
         self.logger.info('creating all relations in the database')
@@ -89,7 +92,8 @@ class hoordu:
         return version.major == self.version.major and self.version >= version
     
     def load_plugins(self):
-        self._plugin_ctors.update(self.config.load_plugins())
+        ctors, errors = self.config.load_plugins()
+        self._plugin_ctors.update(ctors)
         for Plugin in self._plugin_ctors.values():
             if self._is_plugin_supported(Plugin.required_hoordu):
                 self._init_plugin(Plugin)
@@ -106,7 +110,8 @@ class hoordu:
             return self._init_plugin(Plugin, parameters)
         
         # try to search for new plugins, then try initializing it again
-        self._plugin_ctors.update(self.config.load_plugins())
+        ctors, errors = self.config.load_plugins()
+        self._plugin_ctors.update(ctors)
         
         Plugin = self._plugin_ctors.get(name)
         if Plugin is not None:

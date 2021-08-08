@@ -205,7 +205,7 @@ class RemotePost(Base, MetadataHelper):
     source_id = Column(Integer, ForeignKey('source.id', ondelete='CASCADE'), nullable=False)
     
     # the minimum identifier for the post
-    original_id = Column(Text, nullable=False)
+    original_id = Column(Text, nullable=True)
     url = Column(Text)
     
     title = Column(Text(collation='NOCASE'))
@@ -309,6 +309,7 @@ class Subscription(Base):
     
     source_id = Column(Integer, ForeignKey('source.id', ondelete='CASCADE'), nullable=False)
     
+    repr = Column(Text, nullable=True)
     name = Column(Text, nullable=False)
     
     options = Column(Text)
@@ -328,6 +329,7 @@ class Subscription(Base):
     
     __table_args__ = (
         Index('idx_subscription', 'source_id', 'name', unique=True),
+        Index('idx_subscription_repr', 'source_id', 'repr', unique=True),
     )
     
     def __init__(self, **kwargs):

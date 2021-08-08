@@ -30,12 +30,15 @@ def move_file(src, dst):
 def check(path, isorig=True):
     for bucket in path.iterdir():
         for file in bucket.iterdir():
+            file_id = None
+            
             stem = file.stem
             try:
                 file_id = int(stem)
             except:
                 # not a valid file id
                 delete_file(file)
+                continue
             
             db_file = session.query(File).filter(File.id == file_id).one_or_none()
             if db_file is None:

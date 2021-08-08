@@ -7,7 +7,7 @@ import traceback
 from getpass import getpass
 
 import hoordu
-from hoordu.models import Source, Subscription
+from hoordu.models import *
 from hoordu.plugins import FetchDirection
 from hoordu.forms import *
 
@@ -38,6 +38,12 @@ def usage():
     print('')
     print('    rfetch <sub_name> <n>')
     print('        gets <n> newer posts from a subscription')
+    print('')
+    print('    import <url> <filename>')
+    print('        adds <filename> as a related post to the post identified by <url>')
+    print('')
+    print('    related <url> <related_url>')
+    print('        downloads <related_url> and adds it as a related post to the post identified by <url>')
 
 def fail(format, *args, **kwargs):
     print(format.format(*args, **kwargs))
@@ -88,7 +94,8 @@ def cli_form(form):
 
 # this should be the general approach to initialization of a plugin
 def init_plugin(hrd, name, form=None):
-    cli_form(form)
+    if form is not None:
+        cli_form(form)
     
     while True:
         # attempt to init
@@ -145,17 +152,18 @@ def safe_fetch(plugin, it, direction, n):
                 else:
                     raise
 
-def process_url(hrd, url):
+def process_url(hrd, url, file_only=False):
     plugins = hrd.load_plugins()
     
     for plugin in plugins.values():
         options = plugin.parse_url(url)
         
         if isinstance(options, str):
-            plugin.download(options)
+            post = plugin.download(options)
             plugin.core.commit()
+            return post
         
-        elif isinstance(options, hoordu.Dynamic):
+        elif isinstance(options, hoordu.Dynamic) and not file_only:
             details = plugin.get_search_details(options)
             
             if details is not None:
@@ -174,13 +182,13 @@ related:
                 v = input('subscribe to this url? (Yn) ').lower()
                 if not v: v = 'y'
                 if v == 'y':
-                    plugin.create_subscription(details.hint, options=options)
+                    plugin.subscribe(details.hint, options=options)
                     plugin.core.commit()
                 
             else:
                 sub_name = input('pick a name for the subscription: ')
                 if sub_name:
-                    plugin.create_subscription(sub_name, options=options)
+                    plugin.subscribe(sub_name, options=options)
                     plugin.core.commit()
             
         else:
@@ -235,7 +243,7 @@ if __name__ == '__main__':
                     print('creating subscription {0} for {1}'.format(repr(sub_name), url))
                     options = plugin.parse_url(url)
                     if isinstance(options, hoordu.Dynamic):
-                        sub = plugin.create_subscription(sub_name, options=options)
+                        sub = plugin.subscribe(sub_name, options=options)
                         core.commit()
                     else:
                         fail('invalid url')
@@ -313,13 +321,47 @@ if __name__ == '__main__':
                 
                 core.session.query(Subscription).filter(Subscription.source_id == plugin.source.id, Subscription.name == sub_name).delete()
                 core.commit()
+                
+            elif command == 'import':
+                url = args[0]
+                filename = args[1]
+                
+                id = plugin.parse_url(url)
+                path = str(Path(filename).resolve(True))
+                
+                _, fs = hrd.load_plugin('filesystem')
+                
+                original_post = fs.core.session.query(RemotePost) \
+                        .filter(
+                            RemotePost.source_id == plugin.source.id,
+                            RemotePost.original_id == id
+                        ).one_or_none()
+                
+                related_post = fs.download(path)
+                fs.core.add(Related(related_to=original_post, remote=related_post))
+                fs.commit()
+                
+            elif command == 'related':
+                url = args[0]
+                related_url = args[1]
+                
+                id = plugin.parse_url(url)
+                new_post = process_url(hrd, related_url, file_only=True)
+                
+                original_post = plugin.core.session.query(RemotePost) \
+                        .filter(
+                            RemotePost.source_id == plugin.source.id,
+                            RemotePost.original_id == id
+                        ).one_or_none()
+                
+                plugin.core.add(Related(related_to=original_post, remote_id=new_post.id))
+                plugin.commit()
             
         except SystemExit:
-            pass
+            core.rollback()
             
         except:
             traceback.print_exc()
-            # rollback whatever was being done at the time
             core.rollback()
             sys.exit(1)
 

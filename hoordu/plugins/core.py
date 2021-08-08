@@ -75,10 +75,18 @@ class PluginCore:
         if orig is not None:
             file.hash = md5(orig)
             file.mime = mime_from_file(orig)
-            file.ext = ''.join(pathlib.Path(orig).suffixes)[1:]
+            suffixes = pathlib.Path(orig).suffixes
+            if len(suffixes):
+                file.ext = suffixes[-1][1:]
+            else:
+                file.ext = None
         
         if thumb is not None:
-            file.thumb_ext = ''.join(pathlib.Path(thumb).suffixes)[1:]
+            suffixes = pathlib.Path(thumb).suffixes
+            if len(suffixes):
+                file.thumb_ext = suffixes[-1][1:]
+            else:
+                file.thumb_ext = None
         
         dst, tdst = self._hrd.get_file_paths(file)
         

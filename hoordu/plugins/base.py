@@ -1,4 +1,3 @@
-from enum import IntFlag, auto
 from .common import *
 from ..config import *
 from ..models import *
@@ -109,14 +108,8 @@ class PluginBase:
         """
         
         return None
-    
-    def _download_file(self, url, filename=None):
-        # TODO file downloads should be managed by hoordu
-        # so that rate limiting and a download manager can be
-        # implemented easily and in a centralized way
-        pass
         
-    def download(self, url=None, remote_post=None, preview=False):
+    def download(self, id=None, remote_post=None, preview=False):
         """
         Creates or updates a RemotePost entry along with all the associated Files,
         and downloads all files and thumbnails that aren't present yet.
@@ -162,33 +155,39 @@ class PluginBase:
         
         return self.iterator(self, options=options)
     
-    def create_subscription(self, name, options=None, iterator=None):
+    def subscription_repr(self, options):
+        """
+        Returns a simple representation of the subscription, used to find duplicate
+        subscriptions.
+        """
+        
+        raise NotImplementedError
+    
+    def subscribe(self, name, options=None, iterator=None):
         """
         Creates a Subscription entry for the given search options identified by the given name,
         should not get any posts from the post source.
         """
         
-        if iterator is not None:
-            options = iterator.options
-            state = iterator.state
-            
-        elif options is not None:
-            state = Dynamic()
+        if iterator is None:
+            iterator = self.iterator(self, options=options)
+        
+        iterator.init()
         
         sub = Subscription(
             source=self.source,
             name=name,
-            options=options.to_json(),
-            state=state.to_json()
+            repr=self.subscription_repr(iterator.options),
+            options=iterator.options.to_json(),
+            state=iterator.state.to_json()
         )
         
         self.core.add(sub)
         self.core.flush()
         
-        if iterator is not None:
-            iterator.subscription = sub
+        iterator.subscription = sub
         
-        return sub
+        return iterator
     
     def get_iterator(self, subscription):
         """

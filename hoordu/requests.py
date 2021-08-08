@@ -7,6 +7,12 @@ from pathlib import Path
 import functools
 from tempfile import mkstemp
 
+class HTTPError(Exception):
+    def __init__(self, status, response, message):
+        super().__init__(message)
+        self.status = status
+        self.response = response
+
 class Response:
     def __init__(self, url=None, status=0, reason=None, headers=[], data=None):
         self.url = url
@@ -76,14 +82,19 @@ class DefaultRequestManager:
         
         with self._request(url, preload_content=False, **kwargs) as r, \
                 file as f:
-            r.read = functools.partial(r.read, decode_content=True)
             
-            shutil.copyfileobj(r, f)
-            
-            return path, Response(
-                url=r.geturl(),
-                status=r.status,
-                reason=r.reason,
-                headers=list(r.headers.items()),
-                data=None
-            )
+            if r.status == 200:
+                r.read = functools.partial(r.read, decode_content=True)
+                
+                shutil.copyfileobj(r, f)
+                
+                return path, Response(
+                    url=r.geturl(),
+                    status=r.status,
+                    reason=r.reason,
+                    headers=list(r.headers.items()),
+                    data=None
+                )
+                
+            else:
+                raise HTTPError(r.status, r, f'{r.status} while downloading: {url}')
