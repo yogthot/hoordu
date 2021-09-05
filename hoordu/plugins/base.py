@@ -151,8 +151,6 @@ class PluginBase:
         if self.iterator is None:
             raise NotImplementedError
         
-        options = Dynamic.from_json(options)
-        
         return self.iterator(self, options=options)
     
     def subscription_repr(self, options):
@@ -213,8 +211,6 @@ class ReverseSearchPluginBase(PluginBase):
         
         if self.iterator is None:
             raise NotImplementedError
-        
-        options = Dynamic.from_json(options)
         
         return self.iterator(self, options=options)
     

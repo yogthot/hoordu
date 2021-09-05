@@ -123,9 +123,8 @@ def safe_fetch(plugin, it, direction, n):
                 posts[remote_post.id] = remote_post
             
             return posts
-        except KeyboardInterrupt:
-            raise
-        except:
+            
+        except Exception:
             traceback.print_exc()
             if it.subscription is not None:
                 subscription = it.subscription
@@ -280,9 +279,8 @@ if __name__ == '__main__':
                             it.init()
                             safe_fetch(plugin, it, FetchDirection.newer, None)
                             core.commit()
-                        except KeyboardInterrupt:
-                            raise
-                        except:
+                            
+                        except Exception:
                             traceback.print_exc()
                             core.rollback()
                 

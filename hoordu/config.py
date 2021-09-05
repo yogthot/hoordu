@@ -84,7 +84,7 @@ class HoorduConfig:
                 try:
                     Plugin = self._load_module(script).Plugin
                     self._plugins[script] = Plugin
-                except BaseException as e:
+                except Exception as e:
                     errors[script] = e
         
         return {p.name: p for p in self._plugins.values()}, errors
@@ -128,7 +128,7 @@ def load_config():
     for path in paths:
         try:
             return HoorduConfig(path)
-        except:
+        except Exception:
             pass
     
     raise FileNotFoundError('no configuration file found')

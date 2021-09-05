@@ -3,7 +3,7 @@ from urllib.parse import urlencode, quote
 from oauthlib.common import generate_token
 import json
 
-class OAuthError(BaseException):
+class OAuthError(Exception):
     pass
 
 class OAuth:
@@ -62,7 +62,7 @@ class OAuth:
         response = self.http.request('POST', url, headers=headers, body=body)
         
         if response.status != 200:
-            raise OAuthError(response.data)
+            raise OAuthError(response.data.decode('utf-8'))
         
         return json.loads(response.data)
     
