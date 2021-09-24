@@ -11,8 +11,12 @@ from hoordu.models import *
 from hoordu.plugins import FetchDirection
 from hoordu.forms import *
 
+def fail(error):
+    print(error, file=sys.stderr)
+    sys.exit(1)
+
 def usage():
-    print('python {0} <plugin> <command> [command arguments]'.format(sys.argv[0]))
+    print(f'python {sys.argv[0]} <plugin> <command> [command arguments]')
     print('')
     print('available commands:')
     print('    download <url>')
@@ -45,17 +49,105 @@ def usage():
     print('    related <url> <related_url>')
     print('        downloads <related_url> and adds it as a related post to the post identified by <url>')
 
-def fail(format, *args, **kwargs):
-    print(format.format(*args, **kwargs))
-    sys.exit(1)
+def parse_sub_name(arg, args):
+    if args.plugin_id is None and ':' in arg:
+        args.plugin_id, args.subscription = arg.split(':')
+        
+    else:
+        args.subscription = arg
 
+def parse_url(hrd, arg, plugin_id=None):
+    id, options = hrd.parse_url(arg, plugin_id=plugin_id)
+    if id is None:
+        if plugin_id is None:
+            fail(f'unable to download url: {arg}')
+            
+        else:
+            fail(f'plugin \'{plugin_id}\' can\'t to download url: {arg}')
+    
+    return id, options
+
+def parse_args(hrd):
+    # parse arguments
+    args = hoordu.Dynamic()
+    args.plugin_id = None
+    args.command = None
+    args.urls = []
+    args.subscription = None
+    args.num_posts = None
+    
+    argi = 1
+    sargi = 0 # sub argument count
+    while argi < argc:
+        arg = sys.argv[argi]
+        argi += 1
+        
+        # global commands
+        if arg == '-h' or arg == '--help':
+            usage()
+            sys.exit(0)
+        
+        elif arg == '-p' or arg == '--plugin':
+            args.plugin_id = sys.argv[argi]
+            argi += 1
+            
+        elif args.command is None:
+            # pick command, or append to list or urls
+            if arg in ('setup', 'list', 'enable', 'disable', 'update', 'fetch', 'rfetch', 'related'):
+                args.command = arg
+                sargi = 0
+                
+            else:
+                args.urls.append(parse_url(hrd, arg, args.plugin_id))
+            
+        else:
+            # sub-command arguments
+            if args.command in ('enable', 'disable', 'update') and sargi < 1:
+                parse_sub_name(arg, args)
+                sargi += 1
+                
+            elif args.command in ('fetch', 'rfetch') and sargi < 2:
+                if sargi == 0:
+                    parse_sub_name(arg, args)
+                    
+                else:
+                    args.num_posts = int(arg)
+                
+                sargi += 1
+                
+            elif args.command in ('related') and sargi < 2:
+                args.urls.append(parse_url(hrd, arg, args.plugin_id))
+                sargi += 1
+                
+            else:
+                fail(f'unknown argument: {arg}')
+    
+    # verify arguments
+    urlc = len(args.urls)
+    if urlc >= 2:
+        for id, options in args.urls:
+            if isinstance(options, hoordu.Dynamic):
+                fail('can only process one search url at a time')
+    
+    if args.command == 'related' and urlc <= 1:
+        fail('the related sub-command requires at least 2 urls')
+    
+    if args.command in ('enable', 'disable', 'fetch', 'rfetch') and args.subscription is None:
+        fail(f'{args.command} sub-command require a subscription to be specified')
+    
+    if args.command == 'update' and args.subscription is None and args.plugin_id is None:
+        fail(f'update sub-command require a plugin or a subscription to be specified')
+    
+    return args
+
+# plugin setup
 def _cli_form(form):
     form.clear()
     
-    print('== {} ==========='.format(form.label))
+    print(f'== {form.label} ===========')
     for entry in form.entries:
         if isinstance(entry, Section):
-            print('-- {} ----------'.format(entry.label))
+            print(f'-- {entry.label} ----------')
             print()
             execute_form(entry)
             print('--------------' + '-' * len(entry.label))
@@ -63,25 +155,25 @@ def _cli_form(form):
         else:
             if entry.errors:
                 for error in entry.errors:
-                    print('error: {}'.format(error))
+                    print(f'error: {error}')
                 
             if isinstance(entry, Label):
                 print(entry.label)
                 print()
                 
             elif isinstance(entry, PasswordInput):
-                value = getpass('{}: '.format(entry.label))
+                value = getpass('{entry.label}: ')
                 if value: entry.value = value
                 
             elif isinstance(entry, ChoiceInput):
-                print('{}:'.format(entry.label))
+                print(f'{entry.label}:')
                 for k, v in entry.choices:
-                    print('    {}: {}'.format(k, v))
+                    print(f'    {k}: {v}')
                 value = input('pick a choice: ')
                 if value: entry.value = value
                 
             elif isinstance(entry, Input):
-                value = input('{}: '.format(entry.label))
+                value = input(f'{entry.label}: ')
                 if value: entry.value = value
                 
             else:
@@ -92,30 +184,32 @@ def cli_form(form):
     while not form.validate():
         _cli_form(form)
 
-# this should be the general approach to initialization of a plugin
-def init_plugin(hrd, name, form=None):
-    if form is not None:
-        cli_form(form)
+# this should be the general approach to setting up a plugin
+def setup_plugin(hrd, id):
+    form = None
     
     while True:
+        parameters = None
+        if form is not None:
+            parameters = form.value
+        
         # attempt to init
-        success, plugin = hrd.load_plugin(name, parameters=form.value)
+        success, form = hrd.setup_plugin(id, parameters=parameters)
         
         if success:
-            return plugin
+            return True
         
-        elif plugin is not None:
+        elif form is not None:
             # if not successful but something else was returned
             # then attempt to ask the user for input
             
-            form = plugin
             cli_form(form)
         
         else:
-            print('something went wrong with the plugin initialization')
-            sys.exit(1)
+            fail('something went wrong with the plugin setup')
 
-def safe_fetch(plugin, it, direction, n):
+
+def safe_fetch(session, it, direction, n=None):
     posts = {}
     while True:
         try:
@@ -129,238 +223,160 @@ def safe_fetch(plugin, it, direction, n):
             if it.subscription is not None:
                 subscription = it.subscription
                 name = subscription.name
-                print('subscription "{0}" ran into an error'.format(name))
-                print('y = retry; d = rollback, ignore and disable subscription; n = just rollback and ignore'.format(name))
+                print(f'subscription "{name}" ran into an error')
+                print('y = retry; d = rollback, ignore and disable subscription; n = just rollback and ignore')
                 v = input('do you want to retry? (Ynd) ').lower()
                 if not v: v = 'y'
                 if v == 'y':
                     # make sure we retry from a valid db state
-                    plugin.core.flush()
+                    session.flush()
                     if n is not None:
                         n -= len(posts)
                     continue
                     
                 elif v == 'd':
-                    plugin.core.rollback()
+                    session.rollback()
                     
                     subscription.enabled = False
-                    plugin.core.add(subscription)
-                    plugin.core.commit()
+                    session.add(subscription)
+                    session.commit()
                     return
                     
                 else:
                     raise
 
-def process_url(hrd, url, file_only=False):
-    plugins = hrd.load_plugins()
+def process_sub(session, plugin_id, options):
+    plugin = session.plugin(plugin_id)
     
-    for plugin in plugins.values():
-        options = plugin.parse_url(url)
+    details = plugin.get_search_details(options)
+    
+    if details is not None:
+        description = details.description.replace('\n', '\n    ')
         
-        if isinstance(options, str):
-            post = plugin.download(options)
-            plugin.core.commit()
-            return post
-        
-        elif isinstance(options, hoordu.Dynamic) and not file_only:
-            details = plugin.get_search_details(options)
-            
-            if details is not None:
-                print("""
-hint: {}
-title: {}
+        print(f"""
+hint: {details.hint}
+title: {details.title}
 description:
-    {}
+{description}
 related:
-    {}
-                """.format(details.hint,
-                            details.title,
-                            details.description.replace('\n', '\n    '),
-                            '\n    '.join(details.related_urls)).strip())
-                
-                v = input('subscribe to this url? (Yn) ').lower()
-                if not v: v = 'y'
-                if v == 'y':
-                    plugin.subscribe(details.hint, options=options)
-                    plugin.core.commit()
-                
-            else:
-                sub_name = input('pick a name for the subscription: ')
-                if sub_name:
-                    plugin.subscribe(sub_name, options=options)
-                    plugin.core.commit()
-            
-        else:
-            continue
+{details.related_urls}
+        """.strip())
         
-        return
+        sub_name = details.hint
+        
+    else:
+        sub_name = input('pick a name for the subscription: ')
+        if not sub_name:
+            sys.exit(0)
+    
+    return plugin.subscribe(sub_name, options=options)
 
 if __name__ == '__main__':
-    if len(sys.argv) == 1:
+    argc = len(sys.argv)
+    if argc == 1:
         usage()
-        sys.exit(1)
+        sys.exit(0)
     
     config = hoordu.load_config()
     hrd = hoordu.hoordu(config)
     
-    if len(sys.argv) == 2:
-        process_url(hrd, sys.argv[1])
-        
-    else:
-        plugin_name = sys.argv[1]
-        command = sys.argv[2]
-        args = sys.argv[3:]
-        
-        status, plugin = hrd.load_plugin(plugin_name)
-        if not status:
-            form = plugin
-            plugin = init_plugin(hrd, plugin_name, form)
-        
-        core = plugin.core
-        
-        try:
-            if command == 'download':
-                url = args[0]
-                
-                id = plugin.parse_url(url)
-                if isinstance(id, str):
-                    remote_post = plugin.download(id, preview=False)
-                    core.commit()
-                    
-                    print('related urls:')
-                    for related in remote_post.related:
-                        print('    {}'.format(related.url))
-                else:
-                    fail('can\'t download the given url: {0}', url)
-                
-            elif command == 'sub':
-                sub_name = args[0]
-                url = args[1]
-                
-                sub = core.session.query(Subscription).filter(Subscription.source_id == plugin.source.id, Subscription.name == sub_name).one_or_none()
-                if sub is None:
-                    print('creating subscription {0} for {1}'.format(repr(sub_name), url))
-                    options = plugin.parse_url(url)
-                    if isinstance(options, hoordu.Dynamic):
-                        sub = plugin.subscribe(sub_name, options=options)
-                        core.commit()
-                    else:
-                        fail('invalid url')
-                    
-                else:
-                    fail('subscription named \'{0}\' already exists', sub_name)
-                
-            elif command == 'list':
-                subs = core.session.query(Subscription).filter(Subscription.source_id == plugin.source.id)
-                for sub in subs:
-                    print('\'{0}\': {1}'.format(sub.name, sub.options))
-                
-            elif command == 'update':
-                sub_name = args[0]
-                
-                sub = core.session.query(Subscription).filter(Subscription.source_id == plugin.source.id, Subscription.name == sub_name).one_or_none()
-                if sub is not None:
-                    print('getting all new posts for subscription \'{0}\''.format(sub_name))
-                    it = plugin.get_iterator(sub)
-                    it.init()
-                    safe_fetch(plugin, it, FetchDirection.newer, None)
-                    core.commit()
-                    
-                else:
-                    fail('subscription named \'{0}\' doesn\'t exist', sub_name)
-                
-            elif command == 'update-all':
-                subs = core.session.query(Subscription).filter(Subscription.source_id == plugin.source.id)
-                for sub in subs:
-                    if sub.enabled:
-                        try:
-                            print('getting all new posts for subscription \'{0}\''.format(sub.name))
-                            it = plugin.get_iterator(sub)
-                            it.init()
-                            safe_fetch(plugin, it, FetchDirection.newer, None)
-                            core.commit()
-                            
-                        except Exception:
-                            traceback.print_exc()
-                            core.rollback()
-                
-            elif command == 'fetch':
-                sub_name = args[0]
-                num_posts = int(args[1])
-                
-                sub = core.session.query(Subscription).filter(Subscription.source_id == plugin.source.id, Subscription.name == sub_name).one_or_none()
-                if sub is not None:
-                    print('fetching {0} older posts for subscription \'{1}\''.format(num_posts, sub_name))
-                    it = plugin.get_iterator(sub)
-                    it.init()
-                    safe_fetch(plugin, it, FetchDirection.older, num_posts)
-                    core.commit()
-                    
-                else:
-                    fail('subscription named \'{0}\' doesn\'t exist', sub_name)
-                
-            elif command == 'rfetch':
-                sub_name = args[0]
-                num_posts = int(args[1])
-                
-                sub = core.session.query(Subscription).filter(Subscription.source_id == plugin.source.id, Subscription.name == sub_name).one_or_none()
-                if sub is not None:
-                    print('fetching {0} newer posts for subscription \'{1}\''.format(num_posts, sub_name))
-                    it = plugin.get_iterator(sub)
-                    it.init()
-                    safe_fetch(plugin, it, FetchDirection.newer, num_posts)
-                    core.commit()
-                    
-                else:
-                    fail('subscription named \'{0}\' doesn\'t exist', sub_name)
+    args = parse_args(hrd)
+    
+    if args.command is None:
+        if len(args.urls) == 1 and isinstance(args.urls[0][1], hoordu.Dynamic):
+            plugin_id, options = args.urls[0]
+            with hrd.session() as session:
+                process_sub(session, plugin_id, options)
             
-            elif command == 'unsub':
-                sub_name = args[0]
-                
-                core.session.query(Subscription).filter(Subscription.source_id == plugin.source.id, Subscription.name == sub_name).delete()
-                core.commit()
-                
-            elif command == 'import':
-                url = args[0]
-                filename = args[1]
-                
-                id = plugin.parse_url(url)
-                path = str(Path(filename).resolve(True))
-                
-                _, fs = hrd.load_plugin('filesystem')
-                
-                original_post = fs.core.session.query(RemotePost) \
+        else:
+            with hrd.session() as session:
+                for plugin_id, post_id in args.urls:
+                    plugin = session.plugin(plugin_id)
+                    plugin.download(post_id)
+                    session.commit()
+        
+        
+    elif args.command == 'setup':
+        if args.plugin_id is None:
+            fail('setup requires a plugin to be specified')
+        
+        setup_plugin(hrd, args.plugin_id)
+        
+        
+    elif args.command == 'list':
+        if args.plugin_id is None:
+            fail('list requires a plugin to be specified')
+        
+        with hrd.session() as session:
+            source = hrd.load_plugin(args.plugin_id).get_source(session)
+            subs = session.query(Subscription).filter(Subscription.source_id == source.id)
+            for sub in subs:
+                print(f'\'{sub.name}\': {sub.options}')
+        
+        
+    elif args.command in ('enable', 'disable'):
+        with hrd.session() as session:
+            if args.plugin_id is not None:
+                source = hrd.load_plugin(args.plugin_id).get_source(session)
+                sub = session.query(Subscription) \
                         .filter(
-                            RemotePost.source_id == plugin.source.id,
-                            RemotePost.original_id == id
-                        ).one_or_none()
+                            Subscription.source_id == source.id,
+                            Subscription.name == args.subscription
+                        ).one()
                 
-                related_post = fs.download(path)
-                fs.core.add(Related(related_to=original_post, remote=related_post))
-                fs.commit()
-                
-            elif command == 'related':
-                url = args[0]
-                related_url = args[1]
-                
-                id = plugin.parse_url(url)
-                new_post = process_url(hrd, related_url, file_only=True)
-                
-                original_post = plugin.core.session.query(RemotePost) \
+            else:
+                sub = session.query(Subscription) \
                         .filter(
-                            RemotePost.source_id == plugin.source.id,
-                            RemotePost.original_id == id
-                        ).one_or_none()
-                
-                plugin.core.add(Related(related_to=original_post, remote_id=new_post.id))
-                plugin.commit()
+                            Subscription.name == args.subscription
+                        ).one()
             
-        except SystemExit:
-            core.rollback()
+            sub.enabled = (args.command == 'enable')
+            session.add(sub)
+        
+        
+    elif args.command == 'update' and args.subscription is None:
+        with hrd.session() as session:
+            plugin = session.plugin(args.plugin_id)
+            subs = session.query(Subscription).filter(Subscription.source_id == plugin.source.id)
             
-        except:
-            traceback.print_exc()
-            core.rollback()
-            sys.exit(1)
+            for sub in subs:
+                if sub.enabled:
+                    print(f'getting all new posts for subscription \'{sub.name}\'')
+                    it = plugin.create_iterator(sub)
+                    safe_fetch(plugin, it, FetchDirection.newer)
+                    session.commit()
+        
+        
+    elif args.command in ('update', 'fetch', 'rfetch'):
+        with hrd.session() as session:
+            plugin = session.plugin(args.plugin_id)
+            sub = session.query(Subscription) \
+                    .filter(
+                        Subscription.source_id == plugin.source.id,
+                        Subscription.name == args.subscription
+                    ) \
+                    .one_or_none()
+            
+            if sub is None:
+                fail(f'subscription \'{args.subscription}\' doesn\'t exist')
+            
+            direction = FetchDirection.older if args.command == 'fetch' else FetchDirection.newer
+            
+            it = plugin.create_iterator(sub)
+            safe_fetch(plugin, it, direction, args.num_posts)
+        
+        
+    elif args.command == 'related':
+        with hrd.session() as session:
+            plugin_id, post_id = args.urls[0]
+            plugin = session.plugin(plugin_id)
+            post = plugin.download(post_id)
+            session.commit()
+            
+            for plugin_id, post_id in args.urls[1:]:
+                plugin = session.plugin(plugin_id)
+                related_post = plugin.download(post_id)
+                session.add(Related(related_to=post, remote=related_post))
+                session.commit()
 
 

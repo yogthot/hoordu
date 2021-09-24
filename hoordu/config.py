@@ -66,8 +66,7 @@ class HoorduConfig:
     def __init__(self, home):
         self.home = Path(home)
         self.settings = Dynamic.from_module(str(self.home / 'hoordu.conf'))
-        # path -> plugin
-        self._plugins = {}
+        self.plugins = {}
     
     def _load_module(self, path):
         module_name = '_hoordu_plugin.' + path.name.split('.')[0]
@@ -80,14 +79,17 @@ class HoorduConfig:
         plugin_scripts = [p.resolve() for p in (self.home / 'plugins').glob('*.py')]
         errors = {}
         for script in plugin_scripts:
-            if script not in self._plugins:
+            plugin_id = script.name.split('.')[0]
+            if plugin_id not in self.plugins:
                 try:
                     Plugin = self._load_module(script).Plugin
-                    self._plugins[script] = Plugin
+                    Plugin.id = plugin_id
+                    self.plugins[Plugin.id] = Plugin
+                    
                 except Exception as e:
-                    errors[script] = e
+                    errors[plugin_id] = e
         
-        return {p.name: p for p in self._plugins.values()}, errors
+        return self.plugins, errors
 
 
 def get_logger(name, filename=None, level=logging.WARNING):
@@ -118,7 +120,7 @@ def load_config():
     env_path = os.environ.get('HOORDU_HOME', None)
     
     if env_path is not None:
-        paths.append(env_path)
+        paths.append(Path(env_path).expanduser().resolve())
     
     paths.extend([
         Path('~/.config/hoordu').expanduser().resolve(),
@@ -128,7 +130,7 @@ def load_config():
     for path in paths:
         try:
             return HoorduConfig(path)
-        except Exception:
+        except FileNotFoundError:
             pass
     
     raise FileNotFoundError('no configuration file found')

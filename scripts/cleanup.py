@@ -8,7 +8,8 @@ from hoordu.models import *
 
 config = hoordu.load_config()
 hrd = hoordu.hoordu(config)
-session = hrd.session
+
+session = hrd.session()
 
 basepath = pathlib.Path(config.settings.base_path)
 
@@ -46,7 +47,7 @@ def check(path, isorig=True):
                 
             else:
                 # check if this file is in the right place, if not move it
-                orig, thumb = hrd.get_file_paths(db_file)
+                orig, thumb = session.get_file_paths(db_file)
                 actual_path = pathlib.Path(orig if isorig else thumb)
                 
                 if file != actual_path:

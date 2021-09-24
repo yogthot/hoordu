@@ -36,18 +36,11 @@ class Filesystem(PluginBase):
         return None
     
     @classmethod
-    def init(cls, core, parameters=None):
-        return True, cls(core)
+    def setup(cls, session, parameters=None):
+        return True, None
     
-    def __init__(self, core, config=None):
-        self.core = core
-        self.source = core.source
-        self.log = core.logger
-        self.session = core.session
-        
-        self.config = config
-        if self.config is None:
-            self.config = Dynamic.from_json(self.source.config)
+    #def __init__(self, session):
+    #    super().__init__(session)
     
     def parse_url(self, url):
         if url.startswith('/'):
@@ -67,16 +60,16 @@ class Filesystem(PluginBase):
             type=PostType.set,
             post_time=create_time
         )
-        self.core.add(remote_post)
+        self.session.add(remote_post)
             
         if path.is_file():
             filename = path.name
             
             file = File(remote=remote_post, remote_order=0, filename=filename)
-            self.core.add(file)
-            self.core.flush()
+            self.session.add(file)
+            self.session.flush()
             
-            self.core.import_file(file, orig=url, move=False)
+            self.session.import_file(file, orig=url, move=False)
             
             return remote_post
         
@@ -87,10 +80,10 @@ class Filesystem(PluginBase):
                     filename = str(p.relative_to(path))
                     
                     file = File(remote=remote_post, remote_order=order, filename=filename)
-                    self.core.add(file)
-                    self.core.flush()
+                    self.session.add(file)
+                    self.session.flush()
                     
-                    self.core.import_file(file, orig=str(p), move=False)
+                    self.session.import_file(file, orig=str(p), move=False)
                     order += 1
             
             return remote_post

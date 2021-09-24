@@ -1,13 +1,15 @@
 from . import models
 from .util import *
+from .models import *
 from .config import get_logger
-from .plugins import PluginCore
+from .session import HoorduSession
 from .plugins.filesystem import Filesystem
 from .requests import DefaultRequestManager
 from . import _version
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.sql import exists
 import packaging.version
 
 import logging
@@ -21,122 +23,108 @@ class hoordu:
         
         self.engine = create_engine(self.settings.database, echo=self.settings.get('debug', False))
         self._Session = sessionmaker(bind=self.engine)
-        self.session = self._Session()
+        self._session = HoorduSession(self)
         
         self.requests = DefaultRequestManager()
         self.requests.headers['User-Agent'] = '{}/{}'.format(_version.__fulltitle__, _version.__version__)
         
         name = 'hoordu'
         log_file = template_format(self.settings.get('log_file'), name=name)
-        self.logger = get_logger(name, log_file, self.settings.get('log_level', logging.WARNING))
+        self.log = get_logger(name, log_file, self.settings.get('log_level', logging.WARNING))
         
-        self.plugin_cores = {}
-        self._plugin_ctors = {}
-        self._plugins = {}
+        self._plugins = {} # id -> Plugin
+        self._plugins_ready = {} # id -> bool
         
         self.filespath = '{}/files'.format(self.settings.base_path)
         self.thumbspath = '{}/thumbs'.format(self.settings.base_path)
         
-        self._init_plugin(Filesystem)
+        # load built-in plugins
+        self._setup_plugin(Filesystem)
+        
+        # load plugin classes
+        ctors, errors = self.config.load_plugins()
+        self._plugins.update(ctors)
     
     def create_all(self):
         self.logger.info('creating all relations in the database')
         models.Base.metadata.create_all(self.engine)
     
-    def add(self, *args):
-        return self.session.add_all(args)
-    
-    def flush(self):
-        return self.session.flush()
-    
-    def commit(self):
-        return self.session.commit()
-    
-    def rollback(self):
-        return self.session.rollback()
-    
-    def _get_plugin_core(self, name):
-        c = self.plugin_cores.get(name)
-        if c is not None:
-            return c
-        else:
-            session = self._Session()
-            c = PluginCore(name, self, session)
-            
-            self.plugin_cores[name] = c
-            return c
-    
-    def _init_plugin(self, Plugin, parameters=None):
-        name = Plugin.name
-        
-        plugin = self._plugins.get(name)
-        if plugin is not None:
-            return True, plugin
-        
-        if not self._is_plugin_supported(Plugin.required_hoordu):
-            raise ValueError('plugin {} is unsupported'.format(Plugin.name))
-        
-        core = self._get_plugin_core(name)
-        Plugin.update(core)
-        success, plugin = Plugin.init(core, parameters=parameters)
-        
-        if success:
-            core.commit()
-            self._plugins[name] = plugin
-        
-        return success, plugin
     
     def _is_plugin_supported(self, version):
         version = packaging.version.parse(version)
-        # same major, lesser or equal to current
+        # same major, greater or equal to current
         return version.major == self.version.major and self.version >= version
     
-    def load_plugins(self):
-        ctors, errors = self.config.load_plugins()
-        self._plugin_ctors.update(ctors)
-        for Plugin in self._plugin_ctors.values():
-            if self._is_plugin_supported(Plugin.required_hoordu):
-                self._init_plugin(Plugin)
+    def _setup_plugin(self, Plugin, parameters=None):
+        id = Plugin.id
         
-        return self.plugins
+        ready = self._plugins_ready.get(id, False)
+        if ready:
+            return True, None
+        
+        if not self._is_plugin_supported(Plugin.required_hoordu):
+            raise ValueError('plugin {} is unsupported'.format(id))
+        
+        with self._session:
+            source_exists = self._session.query(
+                    self._session.query(Source) \
+                            .filter(Source.name == 'twitter') \
+                            .exists()
+                    ).scalar()
+            
+            if not source_exists:
+                self._session.add(Source(name=Plugin.name, version=0))
+                self._session.flush()
+            
+            Plugin.update(self._session)
+            success, form = Plugin.setup(self._session, parameters=parameters)
+        
+            if success:
+                self._plugins_ready[id] = True
+            
+            return success, form
     
-    def load_plugin(self, name, parameters=None):
-        plugin = self._plugins.get(name)
-        if plugin is not None:
-            return True, plugin
-        
-        Plugin = self._plugin_ctors.get(name)
-        if Plugin is not None:
-            return self._init_plugin(Plugin, parameters)
-        
-        # try to search for new plugins, then try initializing it again
-        ctors, errors = self.config.load_plugins()
-        self._plugin_ctors.update(ctors)
-        
-        Plugin = self._plugin_ctors.get(name)
-        if Plugin is not None:
-            return self._init_plugin(Plugin, parameters)
-        
-        raise ValueError('plugin {} does not exist'.format(name))
-    
-    @property
-    def plugins(self):
-        return dict(self._plugins)
-    
-    def _file_bucket(self, file):
-        return file.id // self.settings.files_bucket_size
-    
-    def get_file_paths(self, file):
-        file_bucket = self._file_bucket(file)
-        
-        if file.ext:
-            filepath = '{}/{}/{}.{}'.format(self.filespath, file_bucket, file.id, file.ext)
+    def parse_url(self, url, plugin_id=None):
+        if plugin_id is None:
+            for id, Plugin in self._plugins.items():
+                options = Plugin.parse_url(url)
+                if options is not None:
+                    return id, options
+            
         else:
-            filepath = '{}/{}/{}'.format(self.filespath, file_bucket, file.id)
+            Plugin = self._plugins[plugin_id]
+            options = Plugin.parse_url(url)
+            if options is not None:
+                return plugin_id, options
         
-        if file.thumb_ext:
-            thumbpath = '{}/{}/{}.{}'.format(self.thumbspath, file_bucket, file.id, file.thumb_ext)
-        else:
-            thumbpath = '{}/{}/{}'.format(self.thumbspath, file_bucket, file.id)
+        return None, None
+    
+    def setup_plugin(self, id, parameters=None):
+        Plugin = self._plugins.get(id)
+        if Plugin is not None:
+            return self._setup_plugin(Plugin, parameters)
         
-        return filepath, thumbpath
+        # check for new plugins
+        ctors, errors = self.config.load_plugins()
+        self._plugins.update(ctors)
+        
+        Plugin = self._plugins.get(id)
+        if Plugin is not None:
+            return self._setup_plugin(Plugin, parameters)
+        
+        # check if this plugin failed to load
+        exc = errors.get(id)
+        if exc is not None:
+            raise ValueError(f'plugin {id} failed to load') from exc
+        
+        raise ValueError(f'plugin {id} does not exist')
+    
+    def load_plugin(self, id):
+        if not self._plugins_ready.get(id, False):
+            if not self.setup_plugin(id)[0]:
+                raise ValueError(f'plugin {id} needs to be setup before use')
+        
+        return self._plugins[id]
+    
+    def session(self):
+        return HoorduSession(self)
