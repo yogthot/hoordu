@@ -31,6 +31,14 @@ class IteratorBase:
             self.options = options
             self.state = Dynamic()
     
+    def __iter__(self):
+        self._iterator = self._generator()
+        return self
+    
+    def __next__(self):
+        return next(self._iterator)
+    
+    
     def init(self):
         """
         Override this method to implement any startup IO task related
@@ -40,22 +48,27 @@ class IteratorBase:
         
         pass
     
-    def fetch(self, direction=FetchDirection.newer, n=None):
+    def reconfigure(self, direction=FetchDirection.newer, num_posts=None):
         """
-        Try to get at least `n` newer or older posts from this search
-        depending on the direction.
-        Create a RemotePost entry and any associated Files for each post found,
-        thumbnails should be downloaded, files are optional.
-        Posts should always come ordered in the same way.
-        This method may auto-commit by default.
+        Sets direction and tentative number of posts to iterate through
+        at a time
+        """
         
-        Returns a list of the new RemotePost objects.
+        self.direction = direction
+        self.num_posts = num_posts
+    
+    def _generator(self):
+        """
+        Iterates through around `self.num_posts` newer or older posts from this
+        search or subscription depending on the direction.
+        This method may auto-commit by default.
         """
         
         raise NotImplementedError
 
 class PluginBase:
     id = None # reserved
+    
     name = None
     version = 0
     required_hoordu = '0.0.0'
@@ -183,6 +196,7 @@ class PluginBase:
         
         iterator = self.iterator(self, options=options)
         iterator.init()
+        iterator.reconfigure(direction=FetchDirection.older, num_posts=None)
         return iterator
     
     def subscription_repr(self, options):
@@ -219,7 +233,7 @@ class PluginBase:
         
         return iterator
     
-    def create_iterator(self, subscription):
+    def create_iterator(self, subscription, direction=FetchDirection.newer, num_posts=None):
         """
         Gets the post iterator for a specific subscription.
         
@@ -231,6 +245,7 @@ class PluginBase:
         
         iterator = self.iterator(self, subscription=subscription)
         iterator.init()
+        iterator.reconfigure(direction=direction, num_posts=num_posts)
         return iterator
 
 class ReverseSearchPluginBase(PluginBase):

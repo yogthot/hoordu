@@ -212,19 +212,19 @@ def setup_plugin(hrd, id):
             fail('something went wrong with the plugin setup')
 
 
-def safe_fetch(session, it, direction, n=None):
+def safe_fetch(session, iterator):
     posts = {}
     while True:
         try:
-            for remote_post in it.fetch(direction=direction, n=n):
+            for remote_post in iterator:
                 posts[remote_post.id] = remote_post
             
             return posts
             
         except Exception:
             traceback.print_exc()
-            if it.subscription is not None:
-                subscription = it.subscription
+            if iterator.subscription is not None:
+                subscription = iterator.subscription
                 name = subscription.name
                 print(f'subscription "{name}" ran into an error')
                 print('y = retry; d = rollback, ignore and disable subscription; n = just rollback and ignore')
@@ -363,8 +363,8 @@ if __name__ == '__main__':
             for sub in subs:
                 if sub.enabled:
                     print(f'getting all new posts for subscription \'{sub.name}\'')
-                    it = plugin.create_iterator(sub)
-                    safe_fetch(session, it, FetchDirection.newer)
+                    it = plugin.create_iterator(sub, direction=FetchDirection.newer, num_posts=None)
+                    safe_fetch(session, it)
                     session.commit()
         
         
@@ -383,8 +383,8 @@ if __name__ == '__main__':
             
             direction = FetchDirection.older if args.command == 'fetch' else FetchDirection.newer
             
-            it = plugin.create_iterator(sub)
-            safe_fetch(session, it, direction, args.num_posts)
+            it = plugin.create_iterator(sub, direction=direction, num_posts=args.num_posts)
+            safe_fetch(session, it)
         
         
     elif args.command == 'related':
