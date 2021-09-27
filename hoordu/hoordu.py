@@ -9,7 +9,6 @@ from . import _version
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.sql import exists
 import packaging.version
 
 import logging

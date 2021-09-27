@@ -11,8 +11,10 @@ from hoordu.models import *
 from hoordu.plugins import FetchDirection
 from hoordu.forms import *
 
+from sqlalchemy.exc import IntegrityError
+
 def fail(error):
-    print(error, file=sys.stderr)
+    print(f'error: {error}', file=sys.stderr)
     sys.exit(1)
 
 def usage():
@@ -253,14 +255,15 @@ def process_sub(session, plugin_id, options):
     
     if details is not None:
         description = details.description.replace('\n', '\n    ')
+        related = '\n    '.join(details.related_urls)
         
         print(f"""
 hint: {details.hint}
 title: {details.title}
 description:
-{description}
+    {description}
 related:
-{details.related_urls}
+    {related}
         """.strip())
         
         sub_name = details.hint
@@ -270,7 +273,24 @@ related:
         if not sub_name:
             sys.exit(0)
     
-    return plugin.subscribe(sub_name, options=options)
+    try:
+        return plugin.subscribe(sub_name, options=options)
+        
+    except IntegrityError:
+        session.rollback()
+        
+        is_name_conflict = session.query(
+                session.query(Subscription) \
+                        .filter(Subscription == sub_name) \
+                        .exists()
+                ).scalar()
+        
+        print()
+        if is_name_conflict:
+            fail('a subscription with the same name exists')
+            
+        else:
+            fail(f'this subscription already exists')
 
 if __name__ == '__main__':
     argc = len(sys.argv)
@@ -344,7 +364,7 @@ if __name__ == '__main__':
                 if sub.enabled:
                     print(f'getting all new posts for subscription \'{sub.name}\'')
                     it = plugin.create_iterator(sub)
-                    safe_fetch(plugin, it, FetchDirection.newer)
+                    safe_fetch(session, it, FetchDirection.newer)
                     session.commit()
         
         
@@ -364,7 +384,7 @@ if __name__ == '__main__':
             direction = FetchDirection.older if args.command == 'fetch' else FetchDirection.newer
             
             it = plugin.create_iterator(sub)
-            safe_fetch(plugin, it, direction, args.num_posts)
+            safe_fetch(session, it, direction, args.num_posts)
         
         
     elif args.command == 'related':
