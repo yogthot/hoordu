@@ -33,11 +33,11 @@ class IteratorBase:
             self.state = Dynamic()
     
     def __iter__(self):
-        self._iterator = self._generator()
+        self.__iterator = self._generator()
         return self
     
     def __next__(self):
-        return next(self._iterator)
+        return next(self.__iterator)
     
     
     def init(self):
