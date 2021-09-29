@@ -25,12 +25,15 @@ def usage():
     print("    -p <plugin id>, --plugin <plugin id>")
     print("        selects a plugin (this affects subsequent arguments)")
     print("")
+    print("    -d, --disabled")
+    print("        list: lists disabled subscriptions instead")
+    print("")
     print("available commands:")
     print("    setup")
     print("        sets up a plugin (requires --plugin)")
     print("")
     print("    list")
-    print("        lists all subscriptions for a plugin (requires --plugin)")
+    print("        lists all enabled subscriptions for a plugin (requires --plugin)")
     print("")
     print("    update [[<plugin id>:]<subscription name>]")
     print("        gets all new posts for a subscription")
@@ -78,6 +81,7 @@ def parse_args(hrd):
     args.urls = []
     args.subscription = None
     args.num_posts = None
+    args.disabled = False
     
     argi = 1
     sargi = 0 # sub argument count
@@ -93,6 +97,9 @@ def parse_args(hrd):
         elif arg == '-p' or arg == '--plugin':
             args.plugin_id = sys.argv[argi]
             argi += 1
+            
+        elif arg == '-d' or arg == '--disabled':
+            args.disabled = True
             
         elif args.command is None:
             # pick command, or append to list or urls
@@ -135,11 +142,15 @@ def parse_args(hrd):
     if args.command == 'related' and urlc <= 1:
         fail('the related sub-command requires at least 2 urls')
     
+    if args.command in ('list', 'setup') and args.plugin_id is None:
+        fail(f'{args.command} sub-command requires a plugin to be specified')
+    
     if args.command in ('enable', 'disable', 'fetch', 'rfetch') and args.subscription is None:
-        fail(f'{args.command} sub-command require a subscription to be specified')
+        fail(f'{args.command} sub-command requires a subscription to be specified')
     
     if args.command == 'update' and args.subscription is None and args.plugin_id is None:
-        fail(f'update sub-command require a plugin or a subscription to be specified')
+        fail(f'update sub-command requires a plugin or a subscription to be specified')
+    
     
     return args
 
@@ -318,21 +329,16 @@ if __name__ == '__main__':
         
         
     elif args.command == 'setup':
-        if args.plugin_id is None:
-            fail('setup requires a plugin to be specified')
-        
         setup_plugin(hrd, args.plugin_id)
         
         
     elif args.command == 'list':
-        if args.plugin_id is None:
-            fail('list requires a plugin to be specified')
-        
         with hrd.session() as session:
             source = hrd.load_plugin(args.plugin_id).get_source(session)
             subs = session.query(Subscription).filter(Subscription.source_id == source.id)
             for sub in subs:
-                print(f'\'{sub.name}\': {sub.options}')
+                if sub.enabled ^ args.disabled:
+                    print(f'\'{sub.name}\': {(sub.options)}')
         
         
     elif args.command in ('enable', 'disable'):
