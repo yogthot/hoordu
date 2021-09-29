@@ -1,4 +1,4 @@
-from .config import *
+from .config     import *
 from .models import *
 from .util import *
 
@@ -10,13 +10,19 @@ class HoorduSession:
         self.hrd = hrd
         self.raw = hrd._Session()
         self._plugins = {}
+        
+        self._callbacks = []
     
     def __enter__(self):
         return self
     
     def __exit__(self, exc_type, exc, tb):
         if exc is None:
-            self.commit()
+            try:
+                self.commit()
+                
+            except:
+                self.rollback()
             
         else:
             self.rollback()
@@ -33,6 +39,9 @@ class HoorduSession:
         self._plugins[plugin_id] = plugin
         return plugin
     
+    def callback(self, callback, on_commit=False, on_rollback=False):
+        self._callbacks.append((callback, on_commit, on_rollback))
+    
     def add(self, *args):
         return self.raw.add_all(args)
     
@@ -40,10 +49,28 @@ class HoorduSession:
         return self.raw.flush()
     
     def commit(self):
+        for callback, on_commit, _ in self._callbacks:
+            if on_commit:
+                callback(self, True)
+        
+        self._callbacks.clear()
+        
         return self.raw.commit()
     
     def rollback(self):
-        return self.raw.rollback()
+        res = self.raw.rollback()
+        
+        for callback, _, on_rollback in self._callbacks:
+            if on_rollback:
+                try:
+                    callback(self, False)
+                    
+                except Exception:
+                    self.hrd.log.exception('error in callback')
+        
+        self._callbacks.clear()
+        
+        return res
     
     def query(self, *args, **kwargs):
         return self.raw.query(*args, **kwargs)
@@ -52,24 +79,6 @@ class HoorduSession:
     def download(self, url, dst_path=None, suffix=None, **kwargs):
         return self.hrd.requests.download(url, dst_path=dst_path, suffix=suffix, **kwargs)
     
-    
-    def _file_bucket(self, file):
-        return file.id // self.hrd.settings.files_bucket_size
-    
-    def get_file_paths(self, file):
-        file_bucket = self._file_bucket(file)
-        
-        if file.ext:
-            filepath = '{}/{}/{}.{}'.format(self.hrd.filespath, file_bucket, file.id, file.ext)
-        else:
-            filepath = '{}/{}/{}'.format(self.hrd.filespath, file_bucket, file.id)
-        
-        if file.thumb_ext:
-            thumbpath = '{}/{}/{}.{}'.format(self.hrd.thumbspath, file_bucket, file.id, file.thumb_ext)
-        else:
-            thumbpath = '{}/{}/{}'.format(self.hrd.thumbspath, file_bucket, file.id)
-        
-        return filepath, thumbpath
     
     def import_file(self, file, orig=None, thumb=None, move=False):
         mvfun = shutil.move if move else shutil.copy
@@ -90,7 +99,7 @@ class HoorduSession:
             else:
                 file.thumb_ext = None
         
-        dst, tdst = self.get_file_paths(file)
+        dst, tdst = self.hrd.get_file_paths(file)
         
         if orig is not None:
             pathlib.Path(dst).parent.mkdir(parents=True, exist_ok=True)

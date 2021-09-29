@@ -3,6 +3,7 @@ from .util import *
 from .models import *
 from .config import get_logger
 from .session import HoorduSession
+from .plugins import *
 from .plugins.filesystem import Filesystem
 from .requests import DefaultRequestManager
 from . import _version
@@ -48,6 +49,24 @@ class hoordu:
         self.logger.info('creating all relations in the database')
         models.Base.metadata.create_all(self.engine)
     
+    def _file_bucket(self, file):
+        return file.id // self.settings.files_bucket_size
+    
+    def get_file_paths(self, file):
+        file_bucket = self._file_bucket(file)
+        
+        if file.ext:
+            filepath = '{}/{}/{}.{}'.format(self.filespath, file_bucket, file.id, file.ext)
+        else:
+            filepath = '{}/{}/{}'.format(self.filespath, file_bucket, file.id)
+        
+        if file.thumb_ext:
+            thumbpath = '{}/{}/{}.{}'.format(self.thumbspath, file_bucket, file.id, file.thumb_ext)
+        else:
+            thumbpath = '{}/{}/{}'.format(self.thumbspath, file_bucket, file.id)
+        
+        return filepath, thumbpath
+    
     
     def _is_plugin_supported(self, version):
         version = packaging.version.parse(version)
@@ -86,9 +105,10 @@ class hoordu:
     def parse_url(self, url, plugin_id=None):
         if plugin_id is None:
             for id, Plugin in self._plugins.items():
-                options = Plugin.parse_url(url)
-                if options is not None:
-                    return id, options
+                if issubclass(Plugin, SimplePluginBase):
+                    options = Plugin.parse_url(url)
+                    if options is not None:
+                        return id, options
             
         else:
             Plugin = self._plugins[plugin_id]

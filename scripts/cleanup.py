@@ -47,7 +47,7 @@ def check(path, isorig=True):
                 
             else:
                 # check if this file is in the right place, if not move it
-                orig, thumb = session.get_file_paths(db_file)
+                orig, thumb = hrd.get_file_paths(db_file)
                 actual_path = pathlib.Path(orig if isorig else thumb)
                 
                 if file != actual_path:
