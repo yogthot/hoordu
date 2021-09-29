@@ -254,13 +254,13 @@ class SimplePluginBase(PluginBase):
         return iterator
 
 
-class ReverseSearchResult:
-    def __init__(self, session, title, thumbnail_url, urls):
+class ReverseSearchEntry:
+    def __init__(self, session, title, thumbnail_url, sources):
         self.session = session
         self.title = title
         self.thumbnail_url = thumbnail_url
         self.thumbnail_path = None
-        self.urls = list(urls)
+        self.sources = list(sources)
     
     def _download(self):
         path, response = self.session.download(self.thumbnail_url)
@@ -272,14 +272,14 @@ class ReverseSearchResult:
         self.thumbnail_path = None
 
 class ReverseSearchPluginBase(PluginBase):
-    def _make_result(self, title, thumbnail_url, urls):
-        result = ReverseSearchResult(self.session, title, thumbnail_url, urls)
+    def _make_result(self, title, thumbnail_url, sources):
+        result = ReverseSearchEntry(self.session, title, thumbnail_url, sources)
         result._download()
         return result
     
     def reverse_search(self, path=None, url=None):
         """
-        Returns an iterable of ReverseSearchResult objects.
+        Returns an iterable of ReverseSearchEntry objects.
         """
         
         raise NotImplementedError
