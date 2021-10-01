@@ -25,7 +25,8 @@ def _ordered_walk(path):
             yield from _ordered_walk(p)
         
 
-class Filesystem(PluginBase):
+class Filesystem(SimplePluginBase):
+    id = 'filesystem'
     name = 'filesystem'
     version = 1
     
@@ -39,9 +40,7 @@ class Filesystem(PluginBase):
     def setup(cls, session, parameters=None):
         return True, None
     
-    #def __init__(self, session):
-    #    super().__init__(session)
-    
+    @classmethod
     def parse_url(self, url):
         if url.startswith('/'):
             return url
@@ -56,7 +55,7 @@ class Filesystem(PluginBase):
         remote_post = RemotePost(
             source=self.source,
             original_id=None,
-            url='file://{}'.format(url),
+            url=f'file://{path}',
             type=PostType.set,
             post_time=create_time
         )
@@ -69,7 +68,7 @@ class Filesystem(PluginBase):
             self.session.add(file)
             self.session.flush()
             
-            self.session.import_file(file, orig=url, move=False)
+            self.session.import_file(file, orig=str(path), move=False)
             
             return remote_post
         

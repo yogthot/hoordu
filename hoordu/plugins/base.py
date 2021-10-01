@@ -75,18 +75,18 @@ class PluginBase:
     required_hoordu = '0.0.0'
     
     @classmethod
+    def get_source(cls, session):
+        return session.query(Source) \
+                .filter(Source.name == cls.name) \
+                .one()
+    
+    @classmethod
     def config_form(cls):
         """
         Returns a form for the configuration of the values by the plugin.
         """
         
-        raise NotImplementedError
-    
-    @classmethod
-    def get_source(cls, session):
-        return session.query(Source) \
-                .filter(Source.name == cls.name) \
-                .one_or_none()
+        return None
     
     @classmethod
     def setup(cls, session, parameters=None):
@@ -100,7 +100,7 @@ class PluginBase:
         required (e.g.: oauth tokens).
         """
         
-        raise NotImplementedError
+        return True, None
     
     @classmethod
     def update(cls, session):

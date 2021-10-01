@@ -86,7 +86,7 @@ class hoordu:
         with self._session:
             source_exists = self._session.query(
                     self._session.query(Source) \
-                            .filter(Source.name == 'twitter') \
+                            .filter(Source.name == Plugin.name) \
                             .exists()
                     ).scalar()
             
@@ -98,6 +98,9 @@ class hoordu:
             success, form = Plugin.setup(self._session, parameters=parameters)
         
             if success:
+                if Plugin.id not in self._plugins:
+                    self._plugins[Plugin.id] = Plugin
+                
                 self._plugins_ready[id] = True
             
             return success, form
