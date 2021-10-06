@@ -9,6 +9,7 @@ class HoorduSession:
     def __init__(self, hrd):
         self.hrd = hrd
         self.raw = hrd._Session()
+        self.priority = hrd._Session()
         self._plugins = {}
         
         self._callbacks = []
@@ -17,6 +18,8 @@ class HoorduSession:
         return self
     
     def __exit__(self, exc_type, exc, tb):
+        self.priority.commit()
+        
         if exc is None:
             try:
                 self.commit()
