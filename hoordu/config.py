@@ -1,10 +1,12 @@
 import os
-from pathlib import Path
+import re
 import json
 import logging
+from pathlib import Path
 
+import importlib
 import importlib.util
-from importlib.machinery import SourceFileLoader
+import importlib.machinery
 
 class Dynamic(dict):
     def __getattr__(self, name):
@@ -31,12 +33,8 @@ class Dynamic(dict):
     
     @classmethod
     def from_module(cls, filename):
-        module_name = '_config.' + Path(filename).name.split('.')[0]
-        # force the file to be loaded as source code
-        loader = SourceFileLoader(module_name, filename)
-        spec = importlib.util.spec_from_loader(module_name, loader)
-        module = importlib.util.module_from_spec(spec)
-        loader.exec_module(module)
+        module_name = '_hoordu_config.' + Path(filename).name.split('.')[0]
+        module = importlib.machinery.SourceFileLoader(module_name, filename).load_module()
         
         return cls((k, getattr(module, k)) for k in dir(module) if not k.startswith('_'))
     
@@ -63,31 +61,52 @@ class Dynamic(dict):
         return s
 
 class HoorduConfig:
+    PLUGIN_FILE_REGEX = re.compile('^(?P<plugin_id>[^\.]+)\.py$', re.IGNORECASE)
+    
     def __init__(self, home):
         self.home = Path(home)
         self.settings = Dynamic.from_module(str(self.home / 'hoordu.conf'))
+        
         self.plugins = {}
+        self._plugin_path = (self.home / 'plugins').resolve()
+        self._plugin_package = '_hoordu_plugin'
+        
+        self._load_init()
     
-    def _load_module(self, path):
-        module_name = '_hoordu_plugin.' + path.name.split('.')[0]
-        spec = importlib.util.spec_from_file_location(module_name, str(path))
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-        return module
+    def _load_init(self):
+        init_file = self._plugin_path / '__init__.py'
+        
+        if not init_file.exists():
+            init_file.touch()
+        
+        importlib.machinery.SourceFileLoader(self._plugin_package, str(init_file)).load_module()
+    
+    def load_plugin(self, plugin_id):
+        module = importlib.import_module(f'{self._plugin_package}.{plugin_id}')
+        return module.Plugin
     
     def load_plugins(self):
-        plugin_scripts = [p.resolve() for p in (self.home / 'plugins').glob('*.py')]
         errors = {}
-        for script in plugin_scripts:
-            plugin_id = script.name.split('.')[0]
-            if plugin_id not in self.plugins:
-                try:
-                    Plugin = self._load_module(script).Plugin
-                    Plugin.id = plugin_id
-                    self.plugins[Plugin.id] = Plugin
-                    
-                except Exception as e:
-                    errors[plugin_id] = e
+        
+        for script in self._plugin_path.iterdir():
+            match = self.PLUGIN_FILE_REGEX.match(script.name)
+            if not match:
+                continue
+            
+            plugin_id = match.group('plugin_id')
+            if plugin_id in self.plugins:
+                continue
+            
+            # load new valid plugins
+            try:
+                module = importlib.import_module(f'{self._plugin_package}.{plugin_id}')
+                Plugin = module.Plugin
+                
+                Plugin.id = plugin_id
+                self.plugins[Plugin.id] = Plugin
+                
+            except Exception as e:
+                errors[plugin_id] = e
         
         return self.plugins, errors
 
