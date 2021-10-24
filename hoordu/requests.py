@@ -6,6 +6,7 @@ from tempfile import TemporaryFile
 from pathlib import Path
 import functools
 from tempfile import mkstemp
+from .rfc6266 import safe_filename as safe_rfc6266_filename
 
 class HTTPError(Exception):
     def __init__(self, status, response, message):
@@ -67,26 +68,35 @@ class DefaultRequestManager:
         )
     
     def download(self, url, dst_path=None, suffix=None, **kwargs):
-        if dst_path:
-            path = dst_path
-            file = open(dst_path, 'w+b')
-        
-        else:
-            if suffix is None:
-                suffix = ''.join(Path(urlparse(url).path).suffixes)
-                if not suffix.startswith('.'):
-                    suffix = ''
-            
-            fd, path = mkstemp(suffix=suffix)
-            file = os.fdopen(fd, 'w+b')
-        
-        with self._request(url, preload_content=False, **kwargs) as r, \
-                file as f:
-            
+        with self._request(url, preload_content=False, **kwargs) as r:
             if r.status == 200:
+                if dst_path:
+                    path = dst_path
+                    file = open(dst_path, 'w+b')
+                
+                else:
+                    if suffix is None:
+                        content_disposition = r.headers.get('content-disposition', None)
+                        attachment_filename = None
+                        if content_disposition is not None:
+                            attachment_filename = safe_rfc6266_filename(content_disposition)
+                            
+                        if attachment_filename is not None:
+                            suffix = attachment_filename
+                            
+                        else:
+                            suffix = ''.join(Path(urlparse(url).path).suffixes)
+                            if not suffix.startswith('.'):
+                                suffix = ''
+                    
+                    fd, path = mkstemp(suffix=suffix)
+                    file = os.fdopen(fd, 'w+b')
+                
+                
                 r.read = functools.partial(r.read, decode_content=True)
                 
-                shutil.copyfileobj(r, f)
+                with file as f:
+                    shutil.copyfileobj(r, f)
                 
                 return path, Response(
                     url=r.geturl(),

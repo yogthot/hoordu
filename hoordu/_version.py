@@ -1,5 +1,5 @@
 __all__ = ['__version__', '__desc__', '__fulltitle__']
 
-__version__ = '0.11.2'
+__version__ = '0.11.3'
 __fulltitle__ = 'hoordu'
 __desc__ = 'Online content archiver with tag based search.'
