@@ -73,7 +73,7 @@ class DefaultRequestManager:
                 if dst_path:
                     path = dst_path
                     file = open(dst_path, 'w+b')
-                
+                    
                 else:
                     if suffix is None:
                         content_disposition = r.headers.get('content-disposition', None)

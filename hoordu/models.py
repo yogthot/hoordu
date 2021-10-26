@@ -3,7 +3,7 @@ from enum import Enum, IntFlag, auto
 import json
 
 from sqlalchemy import Table, Column, Integer, String, Text, LargeBinary, DateTime, ForeignKey, Index, func
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, reconstructor
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy_fulltext import FullText
@@ -239,6 +239,37 @@ class RemotePost(Base, MetadataHelper):
         super().__init__(**kwargs)
         if 'flags' not in kwargs:
             self.flags = PostFlags.none
+        
+        self._init()
+    
+    @reconstructor
+    def _init(self):
+        self._existing_tags = None
+        self._existing_urls = None
+    
+    def add_tag(self, new_tag):
+        if self._existing_tags is None:
+            self._existing_tags = {(t.category, t.tag) for t in self.tags}
+        
+        t = (new_tag.category, new_tag.tag)
+        if t not in self._existing_tags:
+            self.tags.append(new_tag)
+            self._existing_tags.add(t)
+            return True
+            
+        else:
+            return False
+    
+    def add_related_url(self, url):
+        if self._existing_urls is None:
+            self._existing_urls = {r.url for r in self.related}
+        
+        if url not in self._existing_urls:
+            self.related.append(Related(url=url))
+            return True
+            
+        else:
+            return False
 
 
 class FileFlags(IntFlag):

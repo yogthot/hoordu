@@ -146,8 +146,11 @@ class SimplePluginBase(PluginBase):
         
         if tag is None:
             tag = self.session.query(RemoteTag) \
-                    .filter(RemoteTag.source==self.source, RemoteTag.category==category, RemoteTag.tag==tagstr) \
-                    .one_or_none()
+                    .filter(
+                        RemoteTag.source==self.source,
+                        RemoteTag.category==category,
+                        RemoteTag.tag==tagstr
+                    ).one_or_none()
             
             if tag is None:
                 tag = RemoteTag(source=self.source, category=category, tag=tagstr)
@@ -156,7 +159,14 @@ class SimplePluginBase(PluginBase):
             self._tag_cache[category, tagstr] = tag
         
         return tag
-        
+    
+    def _get_post(self, original_id):
+        return self.session.query(RemotePost) \
+                .filter(
+                    RemotePost.source == self.source,
+                    RemotePost.original_id == original_id
+                ).one_or_none()
+    
     def download(self, id=None, remote_post=None, preview=False):
         """
         Creates or updates a RemotePost entry along with all the associated Files,
