@@ -1,7 +1,6 @@
 import os
 import re
 import json
-import logging
 from pathlib import Path
 
 import importlib
@@ -109,30 +108,6 @@ class HoorduConfig:
                 errors[plugin_id] = e
         
         return self.plugins, errors
-
-
-def get_logger(name, filename=None, level=logging.WARNING):
-    logger = logging.getLogger(name)
-    logger.setLevel(logging.DEBUG)
-    
-    formatter = logging.Formatter('[%(asctime)s] %(name)s | %(levelname)s | %(message)s', '%Y-%m-%d %H:%M:%S')
-    
-    console = logging.StreamHandler()
-    console.setLevel(logging.INFO)
-    console.setFormatter(formatter)
-    
-    logger.addHandler(console)
-    
-    if filename is not None:
-        Path(filename).parent.mkdir(parents=True, exist_ok=True)
-        
-        file = logging.FileHandler(filename)
-        file.setLevel(level)
-        file.setFormatter(formatter)
-        
-        logger.addHandler(file)
-    
-    return logger
 
 def load_config():
     paths = []

@@ -1,5 +1,6 @@
 from .common import *
 from ..config import *
+from ..logging import *
 from ..models import *
 from ..util import *
 
@@ -116,8 +117,7 @@ class PluginBase:
         
         self.config = Dynamic.from_json(self.source.config)
         
-        log_file = template_format(session.hrd.settings.get('log_file'), name=self.name)
-        self.log = get_logger(self.name, log_file, session.hrd.settings.get('log_level', logging.WARNING))
+        self.log = logging.getLogger(f'hoordu.{self.name}')
 
 class SimplePluginBase(PluginBase):
     iterator = None

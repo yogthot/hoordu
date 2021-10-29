@@ -244,8 +244,6 @@ def safe_fetch(session, iterator):
                 if v == 'y':
                     # make sure we retry from a valid db state
                     session.flush()
-                    if n is not None:
-                        n -= len(posts)
                     continue
                     
                 elif v == 'd':

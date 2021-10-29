@@ -1,7 +1,7 @@
 from . import models
 from .util import *
 from .models import *
-from .config import get_logger
+from .logging import configure_logger
 from .session import HoorduSession
 from .plugins import *
 from .plugins.filesystem import Filesystem
@@ -28,9 +28,10 @@ class hoordu:
         self.requests = DefaultRequestManager()
         self.requests.headers['User-Agent'] = '{}/{}'.format(_version.__fulltitle__, _version.__version__)
         
-        name = 'hoordu'
-        log_file = template_format(self.settings.get('log_file'), name=name)
-        self.log = get_logger(name, log_file, self.settings.get('log_level', logging.WARNING))
+        # global initializer
+        configure_logger('hoordu', self.settings.get('log_file'))
+        
+        self.log = logging.getLogger('hoordu.hoordu')
         
         self._plugins = {} # id -> Plugin
         self._plugins_ready = {} # id -> bool
