@@ -33,7 +33,7 @@ class hoordu:
         
         self.log = logging.getLogger('hoordu.hoordu')
         
-        self._plugins = {} # id -> Plugin
+        self._plugins = {} # id -> Plugin_cls
         self._plugins_ready = {} # id -> bool
         
         self.filespath = '{}/files'.format(self.settings.base_path)
@@ -74,33 +74,50 @@ class hoordu:
         # same major, greater or equal to current
         return version.major == self.version.major and self.version >= version
     
-    def _setup_plugin(self, Plugin, parameters=None):
-        id = Plugin.id
+    def _setup_plugin(self, Plugin_cls, parameters=None):
+        id = Plugin_cls.id
         
         ready = self._plugins_ready.get(id, False)
         if ready:
             return True, None
         
-        if not self._is_plugin_supported(Plugin.required_hoordu):
+        if not self._is_plugin_supported(Plugin_cls.required_hoordu):
             raise ValueError('plugin {} is unsupported'.format(id))
         
         with self._session:
-            source_exists = self._session.query(
-                    self._session.query(Source) \
-                            .filter(Source.name == Plugin.name) \
-                            .exists()
-                    ).scalar()
+            # create source
+            source = self._session.query(Source) \
+                    .filter(Source.name == Plugin_cls.name) \
+                    .one_or_none()
             
+            source_exists = source is not None
             if not source_exists:
-                self._session.add(Source(name=Plugin.name, version=0))
+                source = Source(name=Plugin_cls.name)
+                self._session.add(source)
                 self._session.flush()
             
-            Plugin.update(self._session)
-            success, form = Plugin.setup(self._session, parameters=parameters)
+            # create plugin
+            plugin = self._session.query(Plugin) \
+                    .filter(Plugin.name == Plugin_cls.id) \
+                    .one_or_none()
+            
+            if plugin is None:
+                p = Plugin(name=Plugin_cls.id, version=0, source=source)
+                self._session.add(p)
+                self._session.flush()
+            
+            # preferred plugin
+            if not source_exists:
+                source.preferred_plugin = p
+                self._session.add(source)
+                self._session.flush()
+            
+            Plugin_cls.update(self._session)
+            success, form = Plugin_cls.setup(self._session, parameters=parameters)
         
             if success:
-                if Plugin.id not in self._plugins:
-                    self._plugins[Plugin.id] = Plugin
+                if Plugin_cls.id not in self._plugins:
+                    self._plugins[Plugin_cls.id] = Plugin_cls
                 
                 self._plugins_ready[id] = True
             
@@ -108,32 +125,32 @@ class hoordu:
     
     def parse_url(self, url, plugin_id=None):
         if plugin_id is None:
-            for id, Plugin in self._plugins.items():
-                if issubclass(Plugin, SimplePluginBase):
-                    options = Plugin.parse_url(url)
+            for id, Plugin_cls in self._plugins.items():
+                if issubclass(Plugin_cls, SimplePluginBase):
+                    options = Plugin_cls.parse_url(url)
                     if options is not None:
                         return id, options
             
         else:
-            Plugin = self._plugins[plugin_id]
-            options = Plugin.parse_url(url)
+            Plugin_cls = self._plugins[plugin_id]
+            options = Plugin_cls.parse_url(url)
             if options is not None:
                 return plugin_id, options
         
         return None, None
     
     def setup_plugin(self, id, parameters=None):
-        Plugin = self._plugins.get(id)
-        if Plugin is not None:
-            return self._setup_plugin(Plugin, parameters)
+        Plugin_cls = self._plugins.get(id)
+        if Plugin_cls is not None:
+            return self._setup_plugin(Plugin_cls, parameters)
         
         # check for new plugins
         ctors, errors = self.config.load_plugins()
         self._plugins.update(ctors)
         
-        Plugin = self._plugins.get(id)
-        if Plugin is not None:
-            return self._setup_plugin(Plugin, parameters)
+        Plugin_cls = self._plugins.get(id)
+        if Plugin_cls is not None:
+            return self._setup_plugin(Plugin_cls, parameters)
         
         # check if this plugin failed to load
         exc = errors.get(id)

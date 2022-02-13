@@ -2,7 +2,6 @@ import os
 import urllib3
 import shutil
 from urllib.parse import urlencode, urlparse
-from tempfile import TemporaryFile
 from pathlib import Path
 import functools
 from tempfile import mkstemp

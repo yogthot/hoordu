@@ -25,6 +25,9 @@ def usage():
     print("    -p <plugin id>, --plugin <plugin id>")
     print("        selects a plugin (this affects subsequent arguments)")
     print("")
+    print("    -s <source>, --source <source>")
+    print("        selects a source (this affects subsequent arguments)")
+    print("")
     print("    -d, --disabled")
     print("        list: lists disabled subscriptions instead")
     print("")
@@ -33,14 +36,14 @@ def usage():
     print("        sets up a plugin (requires --plugin)")
     print("")
     print("    list")
-    print("        lists all enabled subscriptions for a plugin (requires --plugin)")
+    print("        lists all enabled subscriptions for a source (requires --source)")
     print("")
     print("    update [[<plugin id>:]<subscription name>]")
     print("        gets all new posts for a subscription")
-    print("        ':' won't be used as a separator if a plugin is specified")
+    print("        ':' won't be used as a separator if a source is specified")
     print("")
     print("        gets all new posts for all subscriptions if")
-    print("        no subscription is specified (requires --plugin)")
+    print("        no subscription is specified (requires --plugin or --source)")
     print("")
     print("    fetch [<plugin id>:]<subscription name> <n>")
     print("        gets 'n' older posts for a subscription")
@@ -56,14 +59,14 @@ def usage():
     print("    all of them, unless one of them corresponds to a list of posts")
 
 def parse_sub_name(arg, args):
-    if args.plugin_id is None and ':' in arg:
-        args.plugin_id, args.subscription = arg.split(':')
+    if args.source is None and ':' in arg:
+        args.source, args.subscription = arg.split(':')
         
     else:
         args.subscription = arg
 
-def parse_url(hrd, arg, plugin_id=None):
-    id, options = hrd.parse_url(arg, plugin_id=plugin_id)
+def parse_url(hrd, arg):
+    id, options = hrd.parse_url(arg, plugin_id=args.plugin_id)
     if id is None:
         if plugin_id is None:
             fail(f'unable to download url: {arg}')
@@ -76,6 +79,7 @@ def parse_url(hrd, arg, plugin_id=None):
 def parse_args(hrd):
     # parse arguments
     args = hoordu.Dynamic()
+    args.source = None
     args.plugin_id = None
     args.command = None
     args.urls = []
@@ -98,6 +102,10 @@ def parse_args(hrd):
             args.plugin_id = sys.argv[argi]
             argi += 1
             
+        elif arg == '-s' or arg == '--source':
+            args.source = sys.argv[argi]
+            argi += 1
+            
         elif arg == '-d' or arg == '--disabled':
             args.disabled = True
             
@@ -108,7 +116,7 @@ def parse_args(hrd):
                 sargi = 0
                 
             else:
-                args.urls.append(parse_url(hrd, arg, args.plugin_id))
+                args.urls.append(parse_url(hrd, arg))
             
         else:
             # sub-command arguments
@@ -126,7 +134,7 @@ def parse_args(hrd):
                 sargi += 1
                 
             elif args.command in ('related') and sargi < 2:
-                args.urls.append(parse_url(hrd, arg, args.plugin_id))
+                args.urls.append(parse_url(hrd, arg))
                 sargi += 1
                 
             else:
@@ -148,9 +156,8 @@ def parse_args(hrd):
     if args.command in ('enable', 'disable', 'fetch', 'rfetch') and args.subscription is None:
         fail(f'{args.command} sub-command requires a subscription to be specified')
     
-    if args.command == 'update' and args.subscription is None and args.plugin_id is None:
-        fail(f'update sub-command requires a plugin or a subscription to be specified')
-    
+    if args.command == 'update' and args.subscription is None and args.plugin_id is None and args.source is None:
+        fail(f'update sub-command requires a plugin, a source or a subscription to be specified')
     
     return args
 
@@ -255,7 +262,8 @@ def safe_fetch(session, iterator):
                     return
                     
                 else:
-                    raise
+                    session.rollback()
+                    return
 
 def process_sub(session, plugin_id, options):
     plugin = session.plugin(plugin_id)
@@ -360,17 +368,32 @@ if __name__ == '__main__':
         
         
     elif args.command == 'update' and args.subscription is None:
-        with hrd.session() as session:
-            plugin = session.plugin(args.plugin_id)
-            subs = session.query(Subscription).filter(Subscription.source_id == plugin.source.id)
+        if args.plugin is not None:
+            with hrd.session() as session:
+                plugin = session.plugin(args.plugin_id)
+                subs = session.query(Subscription).filter(Subscription.plugin_id == plugin.plugin.id)
+                
+                for sub in subs:
+                    if sub.enabled:
+                        print(f'getting all new posts for subscription \'{sub.name}\'')
+                        it = plugin.create_iterator(sub, direction=FetchDirection.newer, num_posts=None)
+                        safe_fetch(session, it)
+                        session.commit()
             
-            for sub in subs:
-                if sub.enabled:
-                    print(f'getting all new posts for subscription \'{sub.name}\'')
-                    it = plugin.create_iterator(sub, direction=FetchDirection.newer, num_posts=None)
-                    safe_fetch(session, it)
-                    session.commit()
-        
+        else:
+            # use source
+            with hrd.session() as session:
+                # TODO fix this query
+                subs = session.query(Subscription) \
+                        .join(Source) \
+                        .filter(Source.name == args.source)
+                for sub in subs:
+                    if sub.enabled:
+                        print(f'getting all new posts for subscription \'{sub.name}\'')
+                        plugin = session.plugin(sub.plugin.name)
+                        it = plugin.create_iterator(sub, direction=FetchDirection.newer, num_posts=None)
+                        safe_fetch(session, it)
+                        session.commit()
         
     elif args.command in ('update', 'fetch', 'rfetch'):
         with hrd.session() as session:
@@ -389,7 +412,12 @@ if __name__ == '__main__':
             
             it = plugin.create_iterator(sub, direction=direction, num_posts=args.num_posts)
             safe_fetch(session, it)
-        
+            
+            if sub.plugin_id != plugin.plugin.id:
+                # set the preferred plugin to last used plugin
+                sub.plugin_id = plugin.plugin.id
+                session.add(sub)
+                session.commit()
         
     elif args.command == 'related':
         with hrd.session() as session:

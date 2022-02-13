@@ -143,18 +143,32 @@ class Source(Base, MetadataHelper):
     id = Column(Integer, primary_key=True)
     
     name = Column(String(length=255, collation='NOCASE'), nullable=False, index=True, unique=True)
-    version = Column(Integer, nullable=False)
+    # rate limits, etc
     config = Column(Text)
+    preferred_plugin_id = Column(Integer, ForeignKey('plugin.id', ondelete='SET NULL'), nullable=True)
     
     metadata_ = Column('metadata', Text)
-    
-    hoordu_config = Column(Text)
     
     created_time = Column(DateTime(timezone=False), default=datetime.utcnow, nullable=False)
     updated_time = Column(DateTime(timezone=False), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     
     # references
     subscriptions = relationship('Subscription', back_populates='source')
+    preferred_plugin = relationship('Plugin', foreign_keys=[preferred_plugin_id])
+
+class Plugin(Base):
+    __tablename__ = 'plugin'
+    
+    id = Column(Integer, primary_key=True)
+    
+    source_id = Column(Integer, ForeignKey('source.id'), nullable=False)
+    
+    name = Column(String(length=255, collation='NOCASE'), nullable=False, index=True, unique=True)
+    version = Column(Integer, nullable=False)
+    config = Column(Text)
+    
+    # references
+    source = relationship('Source', foreign_keys=[source_id])
 
 remote_post_tag = Table('remote_post_tag', Base.metadata,
     Column('post_id', Integer, ForeignKey('remote_post.id', ondelete='CASCADE'), nullable=False, index=True),
@@ -339,6 +353,7 @@ class Subscription(Base):
     id = Column(Integer, primary_key=True)
     
     source_id = Column(Integer, ForeignKey('source.id', ondelete='CASCADE'), nullable=False)
+    plugin_id = Column(Integer, ForeignKey('plugin.id', ondelete='CASCADE'), nullable=True)
     
     repr = Column(Text, nullable=True)
     name = Column(Text, nullable=False)
@@ -353,6 +368,7 @@ class Subscription(Base):
     
     # references
     source = relationship('Source', back_populates='subscriptions')
+    plugin = relationship('Plugin')
     feed = relationship('RemotePost', secondary=subscription_post)
     
     # flags

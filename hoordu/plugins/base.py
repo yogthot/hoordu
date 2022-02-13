@@ -4,6 +4,7 @@ from ..logging import *
 from ..models import *
 from ..util import *
 
+import sys
 import pathlib
 import logging
 from lru import LRU
@@ -82,6 +83,12 @@ class PluginBase:
                 .one()
     
     @classmethod
+    def get_plugin(cls, session):
+        return session.query(Plugin) \
+                .filter(Plugin.name == cls.id) \
+                .one()
+    
+    @classmethod
     def config_form(cls):
         """
         Returns a form for the configuration of the values by the plugin.
@@ -114,8 +121,9 @@ class PluginBase:
     def __init__(self, session):
         self.session = session
         self.source = self.get_source(session)
+        self.plugin = self.get_plugin(session)
         
-        self.config = Dynamic.from_json(self.source.config)
+        self.config = Dynamic.from_json(self.plugin.config)
         
         self.log = logging.getLogger(f'hoordu.{self.name}')
 
