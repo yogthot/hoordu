@@ -38,17 +38,17 @@ def usage():
     print("    list")
     print("        lists all enabled subscriptions for a source (requires --source)")
     print("")
-    print("    update [[<plugin id>:]<subscription name>]")
+    print("    update [[<source>:]<subscription name>]")
     print("        gets all new posts for a subscription")
     print("        ':' won't be used as a separator if a source is specified")
     print("")
     print("        gets all new posts for all subscriptions if")
     print("        no subscription is specified (requires --plugin or --source)")
     print("")
-    print("    fetch [<plugin id>:]<subscription name> <n>")
+    print("    fetch [<source>:]<subscription name> <n>")
     print("        gets 'n' older posts for a subscription")
     print("")
-    print("    rfetch [<plugin id>:]<subscription name> <n>")
+    print("    rfetch [<source>:]<subscription name> <n>")
     print("        gets 'n' newer posts from a subscription")
     print("")
     print("    related <url> <related url> [<related url>...]")
@@ -150,7 +150,10 @@ def parse_args(hrd):
     if args.command == 'related' and urlc <= 1:
         fail('the related sub-command requires at least 2 urls')
     
-    if args.command in ('list', 'setup') and args.plugin_id is None:
+    if args.command in ('list') and args.source is None:
+        fail(f'{args.command} sub-command requires a source to be specified')
+    
+    if args.command in ('setup') and args.plugin_id is None:
         fail(f'{args.command} sub-command requires a plugin to be specified')
     
     if args.command in ('enable', 'disable', 'fetch', 'rfetch') and args.subscription is None:
@@ -340,8 +343,9 @@ if __name__ == '__main__':
         
     elif args.command == 'list':
         with hrd.session() as session:
-            source = hrd.load_plugin(args.plugin_id).get_source(session)
-            subs = session.query(Subscription).filter(Subscription.source_id == source.id)
+            subs = session.query(Subscription) \
+                    .join(Source) \
+                    .filter(Source.name == args.source)
             for sub in subs:
                 if sub.enabled ^ args.disabled:
                     print(f'\'{sub.name}\': {(sub.options)}')
@@ -349,11 +353,11 @@ if __name__ == '__main__':
         
     elif args.command in ('enable', 'disable'):
         with hrd.session() as session:
-            if args.plugin_id is not None:
-                source = hrd.load_plugin(args.plugin_id).get_source(session)
+            if args.source is not None:
                 sub = session.query(Subscription) \
+                        .join(Source)
                         .filter(
-                            Subscription.source_id == source.id,
+                            Source.name == args.source,
                             Subscription.name == args.subscription
                         ).one()
                 
@@ -368,42 +372,48 @@ if __name__ == '__main__':
         
         
     elif args.command == 'update' and args.subscription is None:
-        if args.plugin is not None:
-            with hrd.session() as session:
-                plugin = session.plugin(args.plugin_id)
-                subs = session.query(Subscription).filter(Subscription.plugin_id == plugin.plugin.id)
+        with hrd.session() as session:
+            if args.plugin_id is not None:
+                # filter by plugin
+                subs = session.query(Subscription) \
+                        .join(Plugin) \
+                        .filter(Plugin.name == args.plugin_id)
                 
-                for sub in subs:
-                    if sub.enabled:
-                        print(f'getting all new posts for subscription \'{sub.name}\'')
-                        it = plugin.create_iterator(sub, direction=FetchDirection.newer, num_posts=None)
-                        safe_fetch(session, it)
-                        session.commit()
-            
-        else:
-            # use source
-            with hrd.session() as session:
-                # TODO fix this query
+            else:
+                # filter by source
                 subs = session.query(Subscription) \
                         .join(Source) \
                         .filter(Source.name == args.source)
-                for sub in subs:
-                    if sub.enabled:
-                        print(f'getting all new posts for subscription \'{sub.name}\'')
-                        plugin = session.plugin(sub.plugin.name)
-                        it = plugin.create_iterator(sub, direction=FetchDirection.newer, num_posts=None)
-                        safe_fetch(session, it)
-                        session.commit()
+            
+            for sub in subs:
+                if sub.enabled:
+                    print(f'getting all new posts for subscription \'{sub.name}\'')
+                    plugin = session.plugin(sub.plugin.name)
+                    it = plugin.create_iterator(sub, direction=FetchDirection.newer, num_posts=None)
+                    safe_fetch(session, it)
+                    session.commit()
         
     elif args.command in ('update', 'fetch', 'rfetch'):
         with hrd.session() as session:
-            plugin = session.plugin(args.plugin_id)
-            sub = session.query(Subscription) \
-                    .filter(
-                        Subscription.source_id == plugin.source.id,
-                        Subscription.name == args.subscription
-                    ) \
-                    .one_or_none()
+            if args.plugin_id is not None:
+                # filter by plugin
+                sub = session.query(Subscription) \
+                        .join(Plugin) \
+                        .filter(
+                            Plugin.name == args.plugin_id,
+                            Subscription.name == args.subscription
+                        ) \
+                        .one_or_none()
+                
+            else:
+                # filter by source
+                sub = session.query(Subscription) \
+                        .join(Source) \
+                        .filter(
+                            Source.name == args.source,
+                            Subscription.name == args.subscription
+                        ) \
+                        .one_or_none()
             
             if sub is None:
                 fail(f'subscription \'{args.subscription}\' doesn\'t exist')
