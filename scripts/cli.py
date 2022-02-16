@@ -133,7 +133,7 @@ def parse_args(hrd):
                 
                 sargi += 1
                 
-            elif args.command in ('related') and sargi < 2:
+            elif args.command in ('related',) and sargi < 2:
                 args.urls.append(parse_url(hrd, arg, args))
                 sargi += 1
                 
@@ -150,10 +150,10 @@ def parse_args(hrd):
     if args.command == 'related' and urlc <= 1:
         fail('the related sub-command requires at least 2 urls')
     
-    if args.command in ('list') and args.source is None:
+    if args.command in ('list',) and args.source is None:
         fail(f'{args.command} sub-command requires a source to be specified')
     
-    if args.command in ('setup') and args.plugin_id is None:
+    if args.command in ('setup',) and args.plugin_id is None:
         fail(f'{args.command} sub-command requires a plugin to be specified')
     
     if args.command in ('enable', 'disable', 'fetch', 'rfetch') and args.subscription is None:
