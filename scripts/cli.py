@@ -65,7 +65,7 @@ def parse_sub_name(arg, args):
     else:
         args.subscription = arg
 
-def parse_url(hrd, arg):
+def parse_url(hrd, arg, args):
     id, options = hrd.parse_url(arg, plugin_id=args.plugin_id)
     if id is None:
         if plugin_id is None:
@@ -116,7 +116,7 @@ def parse_args(hrd):
                 sargi = 0
                 
             else:
-                args.urls.append(parse_url(hrd, arg))
+                args.urls.append(parse_url(hrd, arg, args))
             
         else:
             # sub-command arguments
@@ -134,7 +134,7 @@ def parse_args(hrd):
                 sargi += 1
                 
             elif args.command in ('related') and sargi < 2:
-                args.urls.append(parse_url(hrd, arg))
+                args.urls.append(parse_url(hrd, arg, args))
                 sargi += 1
                 
             else:
@@ -355,7 +355,7 @@ if __name__ == '__main__':
         with hrd.session() as session:
             if args.source is not None:
                 sub = session.query(Subscription) \
-                        .join(Source)
+                        .join(Source) \
                         .filter(
                             Source.name == args.source,
                             Subscription.name == args.subscription
