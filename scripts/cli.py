@@ -66,15 +66,40 @@ def parse_sub_name(arg, args):
         args.subscription = arg
 
 def parse_url(hrd, arg, args):
-    id, options = hrd.parse_url(arg, plugin_id=args.plugin_id)
-    if id is None:
-        if plugin_id is None:
-            fail(f'unable to download url: {arg}')
-            
-        else:
-            fail(f'plugin \'{plugin_id}\' can\'t to download url: {arg}')
+    plugins = hrd.parse_url(arg)
+    if len(plugins) == 0:
+        fail(f'unable to download url: {arg}')
     
-    return id, options
+    # this process should be manual
+    if args.plugin_id is not None:
+        plugin, options = next(((p, o) for p, o in plugins if p.id == args.plugin_id), (None, None))
+        if plugin is None:
+            fail(f'plugin \'{args.plugin_id}\' can\'t to download url: {arg}')
+        
+        return plugin, options
+    
+    source = args.source
+    if args.plugin_id is None and args.source is None:
+        sources = set((plugins[0][0].name,))
+        for p, _ in plugins:
+            if p.name not in sources:
+                fail(f'multiple sources can download: {arg}')
+        
+        source = sources.pop()
+    
+    plugins = [(p, o) for p, o in plugins if p.name == source]
+    if len(plugins) == 0:
+        fail(f'no plugin for source \'{args.source}\' can download url: {arg}')
+    
+    with hrd.session() as session:
+        source_db = session.query(Source).filter(Source.name == source).one()
+        preferred_plugin = source_db.preferred_plugin
+    
+    plugin, options = next(((p, o) for p, o in plugins if p.id == preferred_plugin.name), (None, None))
+    if plugin is None:
+        fail(f'preferred plugin for \'{source}\' can\'t download url: {arg}')
+    
+    return plugin, options
 
 def parse_args(hrd):
     # parse arguments
@@ -133,7 +158,7 @@ def parse_args(hrd):
                 
                 sargi += 1
                 
-            elif args.command in ('related',) and sargi < 2:
+            elif args.command in ('related',):
                 args.urls.append(parse_url(hrd, arg, args))
                 sargi += 1
                 
@@ -420,6 +445,7 @@ if __name__ == '__main__':
             
             direction = FetchDirection.older if args.command == 'fetch' else FetchDirection.newer
             
+            plugin = session.plugin(sub.plugin.name)
             it = plugin.create_iterator(sub, direction=direction, num_posts=args.num_posts)
             safe_fetch(session, it)
             

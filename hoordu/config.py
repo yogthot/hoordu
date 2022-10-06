@@ -24,7 +24,7 @@ class Dynamic(dict):
         return all(self.get(key) is not None for key in keys)
     
     def to_json(self):
-        return json.dumps(self)
+        return json.dumps(self, separators=(',', ':'))
     
     def to_file(self, filename):
         with open(filename, 'w+') as json_file:

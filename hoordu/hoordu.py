@@ -53,6 +53,19 @@ class hoordu:
     def _file_bucket(self, file):
         return file.id // self.settings.files_bucket_size
     
+    def _get_plugin(self, id):
+        if not isinstance(id, str) and issubclass(id, PluginBase):
+            return id
+            
+        else:
+            return self._plugins.get(id)
+    
+    def _is_plugins_ready(self, id):
+        if not isinstance(id, str) and issubclass(id, PluginBase):
+            id = id.id
+        
+        return self._plugins_ready.get(id, False)
+    
     def get_file_paths(self, file):
         file_bucket = self._file_bucket(file)
         
@@ -123,24 +136,20 @@ class hoordu:
             
             return success, form
     
-    def parse_url(self, url, plugin_id=None):
-        if plugin_id is None:
-            for id, Plugin_cls in self._plugins.items():
-                if issubclass(Plugin_cls, SimplePluginBase):
-                    options = Plugin_cls.parse_url(url)
-                    if options is not None:
-                        return id, options
-            
-        else:
-            Plugin_cls = self._plugins[plugin_id]
-            options = Plugin_cls.parse_url(url)
-            if options is not None:
-                return plugin_id, options
+    def parse_url(self, url):
+        plugins = []
         
-        return None, None
+        for id, Plugin_cls in self._plugins.items():
+            # don't use reverse search plugins
+            if issubclass(Plugin_cls, SimplePluginBase):
+                options = Plugin_cls.parse_url(url)
+                if options is not None:
+                    plugins.append((Plugin_cls, options))
+        
+        return plugins
     
     def setup_plugin(self, id, parameters=None):
-        Plugin_cls = self._plugins.get(id)
+        Plugin_cls = self._get_plugin(id)
         if Plugin_cls is not None:
             return self._setup_plugin(Plugin_cls, parameters)
         
@@ -148,7 +157,7 @@ class hoordu:
         ctors, errors = self.config.load_plugins()
         self._plugins.update(ctors)
         
-        Plugin_cls = self._plugins.get(id)
+        Plugin_cls = self._get_plugin(id)
         if Plugin_cls is not None:
             return self._setup_plugin(Plugin_cls, parameters)
         
@@ -160,11 +169,11 @@ class hoordu:
         raise ValueError(f'plugin {id} does not exist')
     
     def load_plugin(self, id):
-        if not self._plugins_ready.get(id, False):
+        if not self._is_plugins_ready(id):
             if not self.setup_plugin(id)[0]:
                 raise ValueError(f'plugin {id} needs to be setup before use')
         
-        return self._plugins[id]
+        return self._get_plugin(id)
     
     def session(self):
         return HoorduSession(self)

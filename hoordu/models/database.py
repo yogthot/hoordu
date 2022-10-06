@@ -275,8 +275,7 @@ class RemotePost(Base, MetadataHelper):
             return False
     
     def add_related_url(self, url):
-        if self._existing_urls is None:
-            self._existing_urls = {r.url for r in self.related}
+        self._existing_urls = {r.url for r in self.related}
         
         if url not in self._existing_urls:
             self.related.append(Related(url=url))

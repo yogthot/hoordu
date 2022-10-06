@@ -69,6 +69,7 @@ class DefaultRequestManager:
     def download(self, url, dst_path=None, suffix=None, **kwargs):
         with self._request(url, preload_content=False, **kwargs) as r:
             if r.status == 200:
+                # need to be able to download to a target directory
                 if dst_path:
                     path = dst_path
                     file = open(dst_path, 'w+b')
@@ -87,6 +88,8 @@ class DefaultRequestManager:
                             suffix = ''.join(Path(urlparse(url).path).suffixes)
                             if not suffix.startswith('.'):
                                 suffix = ''
+                    
+                    suffix = suffix.replace('/', '_')
                     
                     fd, path = mkstemp(suffix=suffix)
                     file = os.fdopen(fd, 'w+b')

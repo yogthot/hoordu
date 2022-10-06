@@ -243,6 +243,7 @@ class SimplePluginBase(PluginBase):
         
         sub = Subscription(
             source=self.source,
+            plugin=self.plugin,
             name=name,
             repr=self.subscription_repr(iterator.options),
             options=iterator.options.to_json(),
