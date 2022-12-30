@@ -1,31 +1,56 @@
+import abc
+from typing import Optional, ClassVar, Protocol, TypeVar, Generic
+from collections.abc import AsyncIterator, AsyncIterable, Iterable
+
 from .common import *
-from ..config import *
+from ..dynamic import Dynamic
+from ..forms import *
 from ..logging import *
 from ..models import *
 from ..util import *
 
-import sys
 import pathlib
 import logging
-from lru import LRU
+import os
+import contextlib
+
+P = TypeVar('P')
+
 
 class APIError(Exception):
     pass
 
 class SearchDetails:
-    def __init__(self, hint=None, title=None, description=None, thumbnail_url=None, related_urls=set()):
-        self.hint = hint
-        self.title = title
-        self.description = description
-        self.thumbnail_url = thumbnail_url
-        self.related_urls = set(related_urls)
+    def __init__(self,
+        hint: Optional[str] = None,
+        title: Optional[str] = None,
+        description: Optional[str] = None,
+        thumbnail_url: Optional[str] = None,
+        related_urls: Optional[set[str]] = None
+    ):
+        self.hint: Optional[str] = hint
+        self.title: Optional[str] = title
+        self.description: Optional[str] = description
+        self.thumbnail_url: Optional[str] = thumbnail_url
+        self.related_urls: set[str]
+        if related_urls is not None:
+            self.related_urls = set(related_urls)
+        else:
+            self.related_urls = set()
 
-class IteratorBase:
-    def __init__(self, plugin, subscription=None, options=None):
-        self.plugin = plugin
+
+class IteratorBase(AsyncIterable[RemotePost], Generic[P]):
+    def __init__(self,
+        plugin: P,
+        subscription: Optional[Subscription] = None,
+        options: Optional[Dynamic] = None
+    ):
+        self.plugin: P = plugin
         self.session = plugin.session
         self.log = plugin.log
-        self.subscription = subscription
+        self.subscription: Optional[Subscription] = subscription
+        self.options: Dynamic
+        self.state: Dynamic
         
         if self.subscription is not None:
             self.options = Dynamic.from_json(self.subscription.options)
@@ -33,16 +58,21 @@ class IteratorBase:
         else:
             self.options = options
             self.state = Dynamic()
+
+        self.direction: FetchDirection = FetchDirection.newer
+        self.num_posts: int | None = None
     
-    def __iter__(self):
-        self.__iterator = self._generator()
+    def __aiter__(self) -> AsyncIterator[RemotePost, None]:
+        self.__iterator: AsyncIterator[RemotePost] = self.generator()
         return self
     
-    def __next__(self):
-        return next(self.__iterator)
+    async def __anext__(self) -> RemotePost:
+        return await anext(self.__iterator)
+
+    def __repr__(self):
+        raise NotImplementedError
     
-    
-    def init(self):
+    async def init(self) -> None:
         """
         Override this method to implement any startup IO task related
         to this specific subscription that doesn't need to execute
@@ -51,7 +81,10 @@ class IteratorBase:
         
         pass
     
-    def reconfigure(self, direction=FetchDirection.newer, num_posts=None):
+    def reconfigure(self,
+        direction: FetchDirection = FetchDirection.newer,
+        num_posts: Optional[int] = None
+    ) -> None:
         """
         Sets direction and tentative number of posts to iterate through
         at a time
@@ -60,36 +93,49 @@ class IteratorBase:
         self.direction = direction
         self.num_posts = num_posts
     
-    def _generator(self):
+    @abc.abstractmethod
+    def generator(self) -> AsyncIterator[RemotePost]:
         """
         Iterates through around `self.num_posts` newer or older posts from this
         search or subscription depending on the direction.
         This method may auto-commit by default.
         """
-        
-        raise NotImplementedError
+        ...
+
+class IteratorConstructor(Protocol):
+    def __call__(self,
+        plugin: 'SimplePlugin',
+        subscription: Optional[Subscription] = None,
+        options: Optional[Dynamic] = None
+    ) -> IteratorBase:
+        ...
+
 
 class PluginBase:
-    id = None # reserved
+    id: ClassVar[str] = None # reserved
     
-    name = None
-    version = 0
-    required_hoordu = '0.0.0'
-    
-    @classmethod
-    def get_source(cls, session):
-        return session.query(Source) \
-                .filter(Source.name == cls.name) \
-                .one()
+    name: ClassVar[str] = None
+    version: ClassVar[int] = 0
+    required_hoordu: ClassVar[str] = '0.0.0'
     
     @classmethod
-    def get_plugin(cls, session):
-        return session.query(Plugin) \
-                .filter(Plugin.name == cls.id) \
-                .one()
+    async def get_source(cls, session) -> Source:
+        stream = await session.stream(
+                select(Source) \
+                    .where(Source.name == cls.name))
+        row = await stream.one()
+        return row.Source
     
     @classmethod
-    def config_form(cls):
+    async def get_plugin(cls, session) -> Plugin:
+        stream = await session.stream(
+                select(Plugin) \
+                    .where(Plugin.name == cls.id))
+        row = await stream.one()
+        return row.Plugin
+    
+    @classmethod
+    def config_form(cls) -> Optional[Form]:
         """
         Returns a form for the configuration of the values by the plugin.
         """
@@ -97,7 +143,10 @@ class PluginBase:
         return None
     
     @classmethod
-    def setup(cls, session, parameters=None):
+    async def setup(cls,
+        session,
+        parameters: Optional[Dynamic] = None
+    ) -> tuple[bool, Form | None]:
         """
         Tries to initialize a plugin from existing configuration or new configuration
         passed in `parameters`.
@@ -111,7 +160,7 @@ class PluginBase:
         return True, None
     
     @classmethod
-    def update(cls, session):
+    async def update(cls, session) -> None:
         """
         Updates the database objects related to this plugin/source, if needed.
         """
@@ -119,19 +168,35 @@ class PluginBase:
         pass
     
     def __init__(self, session):
+        # TODO session type: need to fix imports
         self.session = session
-        self.source = self.get_source(session)
-        self.plugin = self.get_plugin(session)
-        
-        self.config = Dynamic.from_json(self.plugin.config)
-        
         self.log = logging.getLogger(f'hoordu.{self.name}')
+        
+        self.source: Source
+        self.plugin: Plugin
+        self.config: Dynamic
+    
+    async def __aenter__(self):
+         self.__context = self.context()
+         return await self.__context.__aenter__()
+    async def __aexit__(self, *args):
+         return await self.__context.__aexit__(*args)
+    
+    @contextlib.asynccontextmanager
+    async def context(self):
+        try:
+            self.source = await self.get_source(self.session)
+            self.plugin = await self.get_plugin(self.session)
+            self.config = Dynamic.from_json(self.plugin.config)
+            yield self
+        finally:
+            pass
 
-class SimplePluginBase(PluginBase):
-    iterator = None
+class SimplePlugin(PluginBase):
+    iterator: Optional[IteratorConstructor] = None
     
     @classmethod
-    def parse_url(cls, url):
+    async def parse_url(cls, url: str) -> str | Dynamic | None:
         """
         Checks if an url can be downloaded by this plugin.
         
@@ -143,39 +208,43 @@ class SimplePluginBase(PluginBase):
         
         return None
     
-    def __init__(self, session):
-        super().__init__(session)
-        
-        # (category, tag) -> RemoteTag
-        self._tag_cache = LRU(100)
-    
-    def _get_tag(self, category, tagstr):
-        tag = self._tag_cache.get((category, tagstr))
+    async def _get_tag(self, category: TagCategory, tagstr: str) -> RemoteTag | None:
+        tag = await self.session.select(RemoteTag) \
+                .where(
+                    RemoteTag.source == self.source,
+                    RemoteTag.category == category,
+                    RemoteTag.tag == tagstr
+                ).one_or_none()
         
         if tag is None:
-            tag = self.session.query(RemoteTag) \
-                    .filter(
-                        RemoteTag.source==self.source,
-                        RemoteTag.category==category,
-                        RemoteTag.tag==tagstr
-                    ).one_or_none()
-            
-            if tag is None:
-                tag = RemoteTag(source=self.source, category=category, tag=tagstr)
-                self.session.add(tag)
-            
-            self._tag_cache[category, tagstr] = tag
+            tag = RemoteTag(source=self.source, category=category, tag=tagstr)
+            self.session.add(tag)
         
         return tag
     
-    def _get_post(self, original_id):
-        return self.session.query(RemotePost) \
-                .filter(
-                    RemotePost.source == self.source,
-                    RemotePost.original_id == original_id
-                ).one_or_none()
+    async def _get_post(self, original_id: str) -> RemotePost:
+        post = await self.session.select(RemotePost) \
+            .where(
+                RemotePost.source == self.source,
+                RemotePost.original_id == original_id
+            ).one_or_none()
+        
+        if post is None:
+            post = RemotePost(
+                source=self.source,
+                original_id=original_id
+            )
+            
+            self.session.add(post)
+            await self.session.flush()
+        
+        return post
     
-    def download(self, id=None, remote_post=None, preview=False):
+    async def download(self,
+        id: Optional[str] = None,
+        remote_post: Optional[RemotePost] = None,
+        preview: bool = False
+    ) -> RemotePost:
         """
         Creates or updates a RemotePost entry along with all the associated Files,
         and downloads all files and thumbnails that aren't present yet.
@@ -190,7 +259,7 @@ class SimplePluginBase(PluginBase):
         
         raise NotImplementedError
     
-    def search_form(self):
+    def search_form(self) -> Optional[Form]:
         """
         Returns the form or a list of forms used for searches and subscriptions.
         (e.g.: user id, a search string, or advanced options available on the website)
@@ -198,7 +267,7 @@ class SimplePluginBase(PluginBase):
         
         return None
     
-    def get_search_details(self, options):
+    async def get_search_details(self, options: Dynamic) -> Optional[SearchDetails]:
         """
         Returns a SearchDetails object with extra details about the search that would
         be performed by this set of options (e.g.: user timeline).
@@ -207,7 +276,7 @@ class SimplePluginBase(PluginBase):
         
         return None
     
-    def search(self, options):
+    async def search(self, options: Dynamic) -> IteratorBase:
         """
         Creates a temporary search for a given set of search options.
         
@@ -218,19 +287,15 @@ class SimplePluginBase(PluginBase):
             raise NotImplementedError
         
         iterator = self.iterator(self, options=options)
-        iterator.init()
+        await iterator.init()
         iterator.reconfigure(direction=FetchDirection.older, num_posts=None)
         return iterator
     
-    def subscription_repr(self, options):
-        """
-        Returns a simple representation of the subscription, used to find duplicate
-        subscriptions.
-        """
-        
-        raise NotImplementedError
-    
-    def subscribe(self, name, options=None, iterator=None):
+    async def subscribe(self,
+        name: str,
+        options: Optional[Dynamic] = None,
+        iterator: Optional[IteratorBase] = None
+    ) -> IteratorBase:
         """
         Creates a Subscription entry for the given search options identified by the given name,
         should not get any posts from the post source.
@@ -239,25 +304,29 @@ class SimplePluginBase(PluginBase):
         if iterator is None:
             iterator = self.iterator(self, options=options)
         
-        iterator.init()
+        await iterator.init()
         
         sub = Subscription(
             source=self.source,
             plugin=self.plugin,
             name=name,
-            repr=self.subscription_repr(iterator.options),
+            repr=repr(iterator),
             options=iterator.options.to_json(),
             state=iterator.state.to_json()
         )
         
         self.session.add(sub)
-        self.session.flush()
+        await self.session.flush()
         
         iterator.subscription = sub
         
         return iterator
     
-    def create_iterator(self, subscription, direction=FetchDirection.newer, num_posts=None):
+    async def create_iterator(self,
+        subscription: Subscription,
+        direction: FetchDirection = FetchDirection.newer,
+        num_posts: Optional[int] = None
+    ) -> IteratorBase:
         """
         Gets the post iterator for a specific subscription.
         
@@ -268,38 +337,41 @@ class SimplePluginBase(PluginBase):
             raise NotImplementedError
         
         iterator = self.iterator(self, subscription=subscription)
-        iterator.init()
+        await iterator.init()
         iterator.reconfigure(direction=direction, num_posts=num_posts)
         return iterator
 
 
 class ReverseSearchEntry:
-    def __init__(self, session, title, thumbnail_url, sources):
+    def __init__(self, session, title: str, thumbnail_url: str, sources: Iterable[str]):
         self.session = session
         self.title = title
         self.thumbnail_url = thumbnail_url
         self.thumbnail_path = None
         self.sources = list(sources)
     
-    def _download(self):
+    async def _download(self) -> None:
         path, response = self.session.download(self.thumbnail_url)
         self.thumbnail_path = path
         self.session.callback(self._delete, on_commit=True, on_rollback=True)
     
-    def _delete(self, session, is_commit):
+    async def _delete(self, session, is_commit: bool) -> None:
         pathlib.Path(self.thumbnail_path).unlink()
         self.thumbnail_path = None
 
-class ReverseSearchPluginBase(PluginBase):
-    def _make_result(self, title, thumbnail_url, sources):
+class ReverseSearchPlugin(PluginBase):
+    async def _make_result(self, title: str, thumbnail_url: str, sources: Iterable[str]):
         result = ReverseSearchEntry(self.session, title, thumbnail_url, sources)
-        result._download()
+        await result._download()
         return result
     
-    def reverse_search(self, path=None, url=None):
+    @abc.abstractmethod
+    def reverse_search(self,
+        path: Optional[str | os.PathLike] = None,
+        url: Optional[str] = None
+    ) -> AsyncIterator[ReverseSearchEntry]:
         """
-        Returns an iterable of ReverseSearchEntry objects.
+        Returns an async generator of ReverseSearchEntry objects.
         """
-        
-        raise NotImplementedError
+        ...
     

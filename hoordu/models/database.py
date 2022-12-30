@@ -1,10 +1,13 @@
 from datetime import datetime
 from enum import Enum, IntFlag, auto
 import json
+from typing import Any
 
-from sqlalchemy import Table, Column, Integer, String, Text, LargeBinary, DateTime, ForeignKey, Index, func
-from sqlalchemy.orm import relationship, reconstructor
+from sqlalchemy import Table, Column, Integer, String, Text, LargeBinary, DateTime, ForeignKey, Index, func, inspect, select, insert
+from sqlalchemy.orm import relationship, ColumnProperty, RelationshipProperty
+from sqlalchemy.orm.attributes import InstrumentedAttribute
 from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.ext.asyncio import async_object_session
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy_fulltext import FullText
 from sqlalchemy_utils import ChoiceType
@@ -12,15 +15,71 @@ from sqlalchemy_utils import ChoiceType
 Base = declarative_base()
 
 class MetadataHelper:
-    def update_metadata(self, key, value):
+    def __init__(self, *args, **kwargs):
+        pass
+    
+    def update_metadata(self, key: str, value: Any) -> bool:
         metadata = json.loads(self.metadata_) if self.metadata_ else {}
         if metadata.get(key) != value:
             metadata[key] = value
             self.metadata_ = json.dumps(metadata)
             return True
-            
+
         else:
             return False
+
+class FetchMixin:
+    def __init__(self, *args, **kwargs):
+        pass
+    
+    async def fetch(self, field: str | Column | RelationshipProperty) -> Base | list[Base] | None:
+        session = async_object_session(self)
+        
+        if isinstance(field, InstrumentedAttribute):
+            column = field
+        else:
+            column = getattr(self.__class__, field)
+        
+        property = column.property
+        
+        if not column.is_attribute or isinstance(property, ColumnProperty):
+            return getattr(self, column.key)
+        
+        elif isinstance(property, RelationshipProperty):
+            related_class = property.entity.entity
+            
+            conditions = []
+            
+            """
+            # more simple approach with join
+            statement = select(related_class).join(self.__class__, property.primaryjoin)
+            
+            for pk in inspect(self.__class__).primary_key:
+                conditions.append(pk == getattr(self, pk.key))
+            # /simple
+            """
+            
+            # possible optimizations without join
+            statement = select(related_class)
+            for l, f in property.local_remote_pairs:
+                if  l.table == self.__table__:
+                    conditions.append(f == getattr(self, l.key))
+            # /optimization
+            
+            if property.secondary is not None:
+                statement = statement.join(property.secondary)
+            
+            statement = statement.where(*conditions)
+            
+            # get result
+            result = await session.stream_scalars(statement)
+            
+            if property.uselist:
+                return await result.all()
+                
+            else:
+                return await result.one_or_none()
+
 
 # convert collations
 @compiles(String, 'postgresql')
@@ -36,14 +95,14 @@ def compile_unicode(element, compiler, **kw):
 
 
 class FlagProperty:
-    def __init__(self, attr, flag):
-        self.attr = attr
+    def __init__(self, attr: str, flag):
+        self.attr: str = attr
         self.flag = flag
     
-    def __get__(self, obj, cls):
+    def __get__(self, obj: Base, cls) -> bool:
         return bool(getattr(obj, self.attr) & self.flag)
     
-    def __set__(self, obj, value):
+    def __set__(self, obj: Base, value: bool) -> None:
         setattr(obj, self.attr, (getattr(obj, self.attr) & ~self.flag) | (-bool(value) & self.flag))
 
 
@@ -65,7 +124,7 @@ class TagFlags(IntFlag):
     none = 0
     favorite = auto()
 
-class Tag(Base):
+class Tag(Base, FetchMixin):
     __tablename__ = 'tag'
     
     id = Column(Integer, primary_key=True)
@@ -105,7 +164,7 @@ class PostType(Enum):
     blog = 3 # text with files in between (comment is formatted as json)
     # more types can be added as needed
 
-class Post(Base, MetadataHelper):
+class Post(Base, FetchMixin, MetadataHelper):
     __tablename__ = 'post'
     
     id = Column(Integer, primary_key=True)
@@ -137,7 +196,7 @@ class Post(Base, MetadataHelper):
             self.flags = PostFlags.none
 
 
-class Source(Base, MetadataHelper):
+class Source(Base, FetchMixin, MetadataHelper):
     __tablename__ = 'source'
     
     id = Column(Integer, primary_key=True)
@@ -156,7 +215,7 @@ class Source(Base, MetadataHelper):
     subscriptions = relationship('Subscription', back_populates='source')
     preferred_plugin = relationship('Plugin', foreign_keys=[preferred_plugin_id])
 
-class Plugin(Base):
+class Plugin(Base, FetchMixin):
     __tablename__ = 'plugin'
     
     id = Column(Integer, primary_key=True)
@@ -175,7 +234,7 @@ remote_post_tag = Table('remote_post_tag', Base.metadata,
     Column('tag_id', Integer, ForeignKey('remote_tag.id', ondelete='CASCADE'), nullable=False)
 )
 
-class RemoteTag(Base, MetadataHelper):
+class RemoteTag(Base, FetchMixin, MetadataHelper):
     __tablename__ = 'remote_tag'
     
     id = Column(Integer, primary_key=True)
@@ -211,7 +270,7 @@ class RemoteTag(Base, MetadataHelper):
     def __str__(self):
         return '{}:{}'.format(self.category.name, self.tag)
 
-class RemotePost(Base, MetadataHelper):
+class RemotePost(Base, FetchMixin, MetadataHelper):
     __tablename__ = 'remote_post'
     
     id = Column(Integer, primary_key=True)
@@ -254,31 +313,29 @@ class RemotePost(Base, MetadataHelper):
         if 'flags' not in kwargs:
             self.flags = PostFlags.none
         
-        self._init()
+        if 'type' not in kwargs:
+            self.type = PostType.set
     
-    @reconstructor
-    def _init(self):
-        self._existing_tags = None
-        self._existing_urls = None
-    
-    def add_tag(self, new_tag):
-        if self._existing_tags is None:
-            self._existing_tags = {(t.category, t.tag) for t in self.tags}
+    async def add_tag(self, new_tag: RemoteTag) -> bool:
+        if not hasattr(self, '_existing_tags'):
+            self._existing_tags = {(t.category, t.tag) for t in await self.fetch('tags')}
         
         t = (new_tag.category, new_tag.tag)
         if t not in self._existing_tags:
-            self.tags.append(new_tag)
+            async_object_session(self).add(new_tag)
             self._existing_tags.add(t)
             return True
             
         else:
             return False
     
-    def add_related_url(self, url):
-        self._existing_urls = {r.url for r in self.related}
+    async def add_related_url(self, url: str) -> bool:
+        if not hasattr(self, '_existing_urls'):
+            self._existing_urls = {r.url for r in await self.fetch('related')}
         
         if url not in self._existing_urls:
-            self.related.append(Related(url=url))
+            async_object_session(self).add(Related(url=url))
+            self._existing_urls.add(url)
             return True
             
         else:
@@ -294,7 +351,7 @@ class FileFlags(IntFlag):
     present = auto() # if the file is present on the disk
     thumb_present = auto() # if the thumbnail is present on the disk
 
-class File(Base, MetadataHelper):
+class File(Base, FetchMixin, MetadataHelper):
     __tablename__ = 'file'
     
     id = Column(Integer, primary_key=True)
@@ -346,7 +403,7 @@ class SubscriptionFlags(IntFlag):
     none = 0
     enabled = auto() # won't auto update if disabled
 
-class Subscription(Base):
+class Subscription(Base, FetchMixin):
     __tablename__ = 'subscription'
     
     id = Column(Integer, primary_key=True)
@@ -382,9 +439,27 @@ class Subscription(Base):
         super().__init__(**kwargs)
         if 'flags' not in kwargs:
             self.flags = SubscriptionFlags.enabled
+    
+    async def add_post(self, post: RemotePost) -> bool:
+        session = async_object_session(self)
+        await session.flush()
+        
+        exists = await session.execute(select(Subscription) \
+                .join(subscription_post) \
+                .where(
+                    Subscription.id == self.id,
+                    subscription_post.c.remote_post_id == post.id
+                ).exists().select())
+        
+        if exists.scalar():
+            return False
+        
+        await session.execute(insert(subscription_post) \
+                .values(subscription_id=self.id, remote_post_id=post.id))
+        
+        return True
 
-
-class TagTranslation(Base):
+class TagTranslation(Base, FetchMixin):
     __tablename__ = 'tag_translation'
     
     id = Column(Integer, ForeignKey('remote_tag.id', ondelete='CASCADE'), primary_key=True)
@@ -398,7 +473,7 @@ class TagTranslation(Base):
     remote_tag = relationship('RemoteTag', back_populates='translation')
     tag = relationship('Tag')
 
-class Related(Base):
+class Related(Base, FetchMixin):
     __tablename__ = 'related'
     
     id = Column(Integer, primary_key=True)

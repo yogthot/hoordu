@@ -1,23 +1,10 @@
-import os
-import re
-import json
-from datetime import datetime
-from tempfile import mkstemp
-import shutil
-from urllib.parse import urlparse
-import functools
-import urllib3
-
-import hoordu
-from hoordu.models import *
-from hoordu.plugins import *
-from hoordu.forms import *
+from . import *
 
 import pathlib
 from datetime import datetime
 from natsort import natsorted
 
-def _ordered_walk(path):
+def _ordered_walk(path: pathlib.Path):
     for p in natsorted(path.iterdir(), key=lambda x: (not x.is_file(), x.name.lower())):
         yield p
         
@@ -25,7 +12,7 @@ def _ordered_walk(path):
             yield from _ordered_walk(p)
         
 
-class Filesystem(SimplePluginBase):
+class Filesystem(SimplePlugin):
     id = 'filesystem'
     name = 'filesystem'
     version = 1
@@ -33,19 +20,15 @@ class Filesystem(SimplePluginBase):
     iterator = None
     
     @classmethod
-    def config_form(cls):
-        return None
-    
-    @classmethod
-    def setup(cls, session, parameters=None):
+    async def setup(cls, session, parameters=None):
         return True, None
     
     @classmethod
-    def parse_url(self, url):
+    async def parse_url(cls, url):
         if url.startswith('/'):
             return url
-        
-    def download(self, url=None, remote_post=None, preview=False):
+
+    async def download(self, url=None, remote_post=None, preview=False):
         if remote_post is not None:
             return remote_post
         
@@ -60,15 +43,15 @@ class Filesystem(SimplePluginBase):
             post_time=create_time
         )
         self.session.add(remote_post)
-            
+        
         if path.is_file():
             filename = path.name
             
             file = File(remote=remote_post, remote_order=0, filename=filename)
             self.session.add(file)
-            self.session.flush()
+            await self.session.flush()
             
-            self.session.import_file(file, orig=str(path), move=False)
+            await self.session.import_file(file, orig=str(path), move=False)
             
             return remote_post
         
@@ -80,9 +63,9 @@ class Filesystem(SimplePluginBase):
                     
                     file = File(remote=remote_post, remote_order=order, filename=filename)
                     self.session.add(file)
-                    self.session.flush()
+                    await self.session.flush()
                     
-                    self.session.import_file(file, orig=str(p), move=False)
+                    await self.session.import_file(file, orig=str(p), move=False)
                     order += 1
             
             return remote_post

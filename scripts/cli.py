@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
-
+import asyncio
 import sys
-from pathlib import Path
-import importlib.util
 import traceback
 from getpass import getpass
+
+from sqlalchemy.orm import selectinload
 
 import hoordu
 from hoordu.models import *
 from hoordu.plugins import FetchDirection
 from hoordu.forms import *
+from hoordu.oauth.server import OAuthServer
 
 from sqlalchemy.exc import IntegrityError
 
@@ -32,6 +33,9 @@ def usage():
     print("        list: lists disabled subscriptions instead")
     print("")
     print("available commands:")
+    print("    createdb")
+    print("        creates all the relations in the database if they haven't been created yet")
+    print("")
     print("    setup")
     print("        sets up a plugin (requires --plugin)")
     print("")
@@ -65,8 +69,8 @@ def parse_sub_name(arg, args):
     else:
         args.subscription = arg
 
-def parse_url(hrd, arg, args):
-    plugins = hrd.parse_url(arg)
+async def parse_url(hrd, arg, args):
+    plugins = await hrd.parse_url(arg)
     if len(plugins) == 0:
         fail(f'unable to download url: {arg}')
     
@@ -80,7 +84,7 @@ def parse_url(hrd, arg, args):
     
     source = args.source
     if args.plugin_id is None and args.source is None:
-        sources = set((plugins[0][0].name,))
+        sources = {plugins[0][0].name}
         for p, _ in plugins:
             if p.name not in sources:
                 fail(f'multiple sources can download: {arg}')
@@ -91,8 +95,11 @@ def parse_url(hrd, arg, args):
     if len(plugins) == 0:
         fail(f'no plugin for source \'{args.source}\' can download url: {arg}')
     
-    with hrd.session() as session:
-        source_db = session.query(Source).filter(Source.name == source).one()
+    async with hrd.session() as session:
+        source_db = await session.select(Source) \
+                .options(selectinload(Source.preferred_plugin)) \
+                .where(Source.name == source) \
+                .one()
         preferred_plugin = source_db.preferred_plugin
     
     plugin, options = next(((p, o) for p, o in plugins if p.id == preferred_plugin.name), (None, None))
@@ -101,7 +108,7 @@ def parse_url(hrd, arg, args):
     
     return plugin, options
 
-def parse_args(hrd):
+async def parse_args(hrd):
     # parse arguments
     args = hoordu.Dynamic()
     args.source = None
@@ -114,6 +121,7 @@ def parse_args(hrd):
     
     argi = 1
     sargi = 0 # sub argument count
+    argc = len(sys.argv)
     while argi < argc:
         arg = sys.argv[argi]
         argi += 1
@@ -136,12 +144,12 @@ def parse_args(hrd):
             
         elif args.command is None:
             # pick command, or append to list or urls
-            if arg in ('setup', 'list', 'enable', 'disable', 'update', 'fetch', 'rfetch', 'related'):
+            if arg in ('createdb', 'setup', 'list', 'enable', 'disable', 'update', 'fetch', 'rfetch', 'related', 'info', 'files'):
                 args.command = arg
                 sargi = 0
                 
             else:
-                args.urls.append(parse_url(hrd, arg, args))
+                args.urls.append(await parse_url(hrd, arg, args))
             
         else:
             # sub-command arguments
@@ -158,8 +166,8 @@ def parse_args(hrd):
                 
                 sargi += 1
                 
-            elif args.command in ('related',):
-                args.urls.append(parse_url(hrd, arg, args))
+            elif args.command in ('related', 'info', 'files'):
+                args.urls.append(await parse_url(hrd, arg, args))
                 sargi += 1
                 
             else:
@@ -190,15 +198,25 @@ def parse_args(hrd):
     return args
 
 # plugin setup
-def _cli_form(form):
+async def _cli_form(form):
     form.clear()
     
     print(f'== {form.label} ===========')
+    if isinstance(form, OAuthForm):
+        print('Please visit the following url and authorize to continue.')
+        print(form.url)
+        oauth_server = OAuthServer(8941)
+        path, params = await oauth_server.wait_for_request()
+        
+        plugin_id = path[1:]
+        form.fill(params)
+        return
+    
     for entry in form.entries:
         if isinstance(entry, Section):
             print(f'-- {entry.label} ----------')
             print()
-            execute_form(entry)
+            await _cli_form(entry)
             print('--------------' + '-' * len(entry.label))
         
         else:
@@ -228,13 +246,13 @@ def _cli_form(form):
             else:
                 print()
 
-def cli_form(form):
-    _cli_form(form)
+async def cli_form(form):
+    await _cli_form(form)
     while not form.validate():
-        _cli_form(form)
+        await _cli_form(form)
 
 # this should be the general approach to setting up a plugin
-def setup_plugin(hrd, id):
+async def setup_plugin(hrd, id):
     form = None
     
     while True:
@@ -243,7 +261,7 @@ def setup_plugin(hrd, id):
             parameters = form.value
         
         # attempt to init
-        success, form = hrd.setup_plugin(id, parameters=parameters)
+        success, form = await hrd.setup_plugin(id, parameters=parameters)
         
         if success:
             return True
@@ -252,17 +270,17 @@ def setup_plugin(hrd, id):
             # if not successful but something else was returned
             # then attempt to ask the user for input
             
-            cli_form(form)
+            await cli_form(form)
         
         else:
             fail('something went wrong with the plugin setup')
 
 
-def safe_fetch(session, iterator):
+async def safe_fetch(session, iterator):
     posts = {}
     while True:
         try:
-            for remote_post in iterator:
+            async for remote_post in iterator:
                 posts[remote_post.id] = remote_post
             
             return posts
@@ -278,28 +296,30 @@ def safe_fetch(session, iterator):
                 if not v: v = 'y'
                 if v == 'y':
                     # make sure we retry from a valid db state
-                    session.flush()
+                    await session.flush()
                     continue
                     
                 elif v == 'd':
-                    session.rollback()
+                    await session.rollback()
                     
+                    await session.refresh(subscription)
                     subscription.enabled = False
                     session.add(subscription)
-                    session.commit()
+                    await session.commit()
                     return
                     
                 else:
-                    session.rollback()
+                    await session.rollback()
                     return
 
-def process_sub(session, plugin_id, options):
-    plugin = session.plugin(plugin_id)
+async def process_sub(session, plugin_id, options):
+    plugin = await session.plugin(plugin_id)
     
-    details = plugin.get_search_details(options)
+    details = await plugin.get_search_details(options)
     
     if details is not None:
-        description = details.description.replace('\n', '\n    ')
+        description = details.description or ''
+        description = description.replace('\n', '\n    ')
         related = '\n    '.join(details.related_urls)
         
         print(f"""
@@ -319,112 +339,115 @@ related:
             sys.exit(0)
     
     try:
-        return plugin.subscribe(sub_name, options=options)
+        return await plugin.subscribe(sub_name, options=options)
         
     except IntegrityError:
-        session.rollback()
+        await session.rollback()
         
-        is_name_conflict = session.query(
-                session.query(Subscription) \
-                        .filter(Subscription == sub_name) \
-                        .exists()
-                ).scalar()
+        is_name_conflict = await session.select(Subscription) \
+                .where(Subscription.name == sub_name) \
+                .exists().select() \
+                .one_or_none()
         
         print()
         if is_name_conflict:
-            fail('a subscription with the same name exists')
+            fail('a subscription with the same name already exists')
             
         else:
             fail(f'this subscription already exists')
 
-if __name__ == '__main__':
+async def main():
     argc = len(sys.argv)
     if argc == 1:
         usage()
-        sys.exit(0)
+        sys.exit(1)
     
     config = hoordu.load_config()
+    
+    if sys.argv[1] == 'createdb':
+        await hoordu.hoordu.create_all(config)
+        return
+    
     hrd = hoordu.hoordu(config)
     
-    args = parse_args(hrd)
+    args = await parse_args(hrd)
     
-    if args.command is None:
-        if len(args.urls) == 1 and isinstance(args.urls[0][1], hoordu.Dynamic):
-            plugin_id, options = args.urls[0]
-            with hrd.session() as session:
-                process_sub(session, plugin_id, options)
+    async with hrd.session() as session:
+        if args.command is None:
+            if len(args.urls) == 1 and isinstance(args.urls[0][1], hoordu.Dynamic):
+                plugin_id, options = args.urls[0]
+                await process_sub(session, plugin_id, options)
             
-        else:
-            with hrd.session() as session:
+            else:
                 for plugin_id, post_id in args.urls:
-                    plugin = session.plugin(plugin_id)
-                    plugin.download(post_id)
-                    session.commit()
+                    plugin = await session.plugin(plugin_id)
+                    await plugin.download(post_id)
+                    await session.commit()
         
         
-    elif args.command == 'setup':
-        setup_plugin(hrd, args.plugin_id)
-        
-        
-    elif args.command == 'list':
-        with hrd.session() as session:
-            subs = session.query(Subscription) \
+        elif args.command == 'setup':
+            await setup_plugin(hrd, args.plugin_id)
+            
+            
+        elif args.command == 'list':
+            subs = await session.select(Subscription) \
                     .join(Source) \
-                    .filter(Source.name == args.source)
+                    .where(Source.name == args.source) \
+                    .all()
+            
             for sub in subs:
                 if sub.enabled ^ args.disabled:
-                    print(f'\'{sub.name}\': {(sub.options)}')
-        
-        
-    elif args.command in ('enable', 'disable'):
-        with hrd.session() as session:
+                    print(f'\'{sub.name}\': {(sub.repr)}')
+            
+            
+        elif args.command in ('enable', 'disable'):
             if args.source is not None:
-                sub = session.query(Subscription) \
+                sub = await session.select(Subscription) \
                         .join(Source) \
-                        .filter(
+                        .where(
                             Source.name == args.source,
                             Subscription.name == args.subscription
                         ).one()
                 
             else:
-                sub = session.query(Subscription) \
-                        .filter(
+                sub = await session.select(Subscription) \
+                        .where(
                             Subscription.name == args.subscription
                         ).one()
             
             sub.enabled = (args.command == 'enable')
             session.add(sub)
-        
-        
-    elif args.command == 'update' and args.subscription is None:
-        with hrd.session() as session:
+            
+            
+        elif args.command == 'update' and args.subscription is None:
             if args.plugin_id is not None:
                 # filter by plugin
-                subs = session.query(Subscription) \
+                subs = await session.select(Subscription) \
                         .join(Plugin) \
-                        .filter(Plugin.name == args.plugin_id)
+                        .where(Plugin.name == args.plugin_id) \
+                        .all()
                 
             else:
                 # filter by source
-                subs = session.query(Subscription) \
+                subs = await session.select(Subscription) \
                         .join(Source) \
-                        .filter(Source.name == args.source)
+                        .where(Source.name == args.source) \
+                        .all()
             
             for sub in subs:
                 if sub.enabled:
                     print(f'getting all new posts for subscription \'{sub.name}\'')
-                    plugin = session.plugin(sub.plugin.name)
-                    it = plugin.create_iterator(sub, direction=FetchDirection.newer, num_posts=None)
-                    safe_fetch(session, it)
-                    session.commit()
-        
-    elif args.command in ('update', 'fetch', 'rfetch'):
-        with hrd.session() as session:
+                    plugin = await session.plugin((await sub.fetch('plugin')).name)
+                    it = await plugin.create_iterator(sub, direction=FetchDirection.newer, num_posts=None)
+                    await safe_fetch(session, it)
+                    await session.commit()
+            
+        elif args.command in ('update', 'fetch', 'rfetch'):
             if args.plugin_id is not None:
                 # filter by plugin
-                sub = session.query(Subscription) \
+                sub = await session.select(Subscription) \
                         .join(Plugin) \
-                        .filter(
+                        .where(
                             Plugin.name == args.plugin_id,
                             Subscription.name == args.subscription
                         ) \
@@ -432,9 +455,9 @@ if __name__ == '__main__':
                 
             else:
                 # filter by source
-                sub = session.query(Subscription) \
+                sub = await session.select(Subscription) \
                         .join(Source) \
-                        .filter(
+                        .where(
                             Source.name == args.source,
                             Subscription.name == args.subscription
                         ) \
@@ -445,27 +468,50 @@ if __name__ == '__main__':
             
             direction = FetchDirection.older if args.command == 'fetch' else FetchDirection.newer
             
-            plugin = session.plugin(sub.plugin.name)
-            it = plugin.create_iterator(sub, direction=direction, num_posts=args.num_posts)
-            safe_fetch(session, it)
+            plugin = await session.plugin((await sub.fetch('plugin')).name)
+            it = await plugin.create_iterator(sub, direction=direction, num_posts=args.num_posts)
+            await safe_fetch(session, it)
             
             if sub.plugin_id != plugin.plugin.id:
                 # set the preferred plugin to last used plugin
                 sub.plugin_id = plugin.plugin.id
                 session.add(sub)
-                session.commit()
-        
-    elif args.command == 'related':
-        with hrd.session() as session:
+                await session.commit()
+            
+        elif args.command == 'related':
             plugin_id, post_id = args.urls[0]
-            plugin = session.plugin(plugin_id)
+            plugin = await session.plugin(plugin_id)
             post = plugin.download(post_id)
-            session.commit()
+            await session.commit()
             
             for plugin_id, post_id in args.urls[1:]:
-                plugin = session.plugin(plugin_id)
-                related_post = plugin.download(post_id)
+                plugin = await session.plugin(plugin_id)
+                related_post = await plugin.download(post_id)
                 session.add(Related(related_to=post, remote=related_post))
-                session.commit()
+                await session.commit()
+            
+        elif args.command in ('info', 'files'):
+            plugin, id = args.urls[0]
+            
+            if not isinstance(id, str):
+                fail('failed to parse post url')
+            
+            post = await session.select(RemotePost) \
+                    .options(selectinload(RemotePost.files)) \
+                    .where(RemotePost.original_id == id) \
+                    .one_or_none()
+            
+            if post is None:
+                fail('post does not exist')
+            
+            if args.command == 'info':
+                print(f'plugin: {plugin.name}')
+                print(f'local id: {post.id}')
+                print(f'original id: {post.original_id}')
+            
+            for f in post.files:
+                orig, thumb = hrd.get_file_paths(f)
+                print(orig)
 
 
+asyncio.run(main())

@@ -1,72 +1,79 @@
+from typing import Type
+
 from . import models
-from .util import *
-from .models import *
-from .logging import configure_logger
+from .config import *
 from .session import HoorduSession
 from .plugins import *
 from .plugins.filesystem import Filesystem
-from .requests import DefaultRequestManager
 from . import _version
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 import packaging.version
 
 import logging
 
 class hoordu:
-    def __init__(self, config):
-        self.version = packaging.version.parse(_version.__version__)
+    def __init__(self, config: HoorduConfig):
+        self.version: packaging.version.Version = packaging.version.parse(_version.__version__)
+        self.useragent: str = f'{_version.__fulltitle__}/{_version.__version__}'
         
-        self.config = config
-        self.settings = config.settings
+        self.config: HoorduConfig = config
+        self.settings: Dynamic = config.settings
         
-        self.engine = create_engine(self.settings.database, echo=self.settings.get('debug', False))
-        self._Session = sessionmaker(bind=self.engine)
-        self._session = HoorduSession(self)
-        
-        self.requests = DefaultRequestManager()
-        self.requests.headers['User-Agent'] = '{}/{}'.format(_version.__fulltitle__, _version.__version__)
+        self.engine = create_async_engine(self.settings.database, echo=self.settings.get('debug', False))
+        self._sessionmaker = sessionmaker(
+            self.engine, expire_on_commit=False, class_=AsyncSession
+        )
+        self._session: HoorduSession = HoorduSession(self)
         
         # global initializer
         configure_logger('hoordu', self.settings.get('log_file'))
         
-        self.log = logging.getLogger('hoordu.hoordu')
+        self.log: logging.Logger = logging.getLogger('hoordu.hoordu')
         
-        self._plugins = {} # id -> Plugin_cls
-        self._plugins_ready = {} # id -> bool
+        self._plugins: dict[str, Type[PluginBase]] = dict()
+        self._plugins_ready: dict[str, bool] = dict()
         
-        self.filespath = '{}/files'.format(self.settings.base_path)
-        self.thumbspath = '{}/thumbs'.format(self.settings.base_path)
+        self.filespath: str = '{}/files'.format(self.settings.base_path)
+        self.thumbspath: str = '{}/thumbs'.format(self.settings.base_path)
         
-        # load built-in plugins
-        self._setup_plugin(Filesystem)
+        self._plugins[Filesystem.id] = Filesystem
         
         # load plugin classes
         ctors, errors = self.config.load_plugins()
         self._plugins.update(ctors)
     
-    def create_all(self):
-        self.logger.info('creating all relations in the database')
-        models.Base.metadata.create_all(self.engine)
+    @staticmethod
+    async def create_all(config: HoorduConfig) -> None:
+        log = logging.getLogger('hoordu.hoordu')
+        log.info('creating all relations in the database')
+        
+        settings = config.settings
+        engine = create_async_engine(settings.database, echo=settings.get('debug', False))
+        async with engine.begin() as conn:
+            await conn.run_sync(models.Base.metadata.create_all)
     
-    def _file_bucket(self, file):
+    def _file_bucket(self, file: File) -> int:
         return file.id // self.settings.files_bucket_size
     
-    def _get_plugin(self, id):
-        if not isinstance(id, str) and issubclass(id, PluginBase):
-            return id
+    def _get_plugin(self,
+        identifier: str | Type[PluginBase]
+    ) -> Type[PluginBase] | None:
+        if not isinstance(identifier, str) and issubclass(identifier, PluginBase):
+            return identifier
             
         else:
-            return self._plugins.get(id)
+            return self._plugins.get(identifier)
     
-    def _is_plugins_ready(self, id):
-        if not isinstance(id, str) and issubclass(id, PluginBase):
-            id = id.id
+    def _is_plugins_ready(self, identifier: str | Type[PluginBase]) -> bool:
+        if not isinstance(identifier, str) and issubclass(identifier, PluginBase):
+            identifier = identifier.id
         
-        return self._plugins_ready.get(id, False)
+        return self._plugins_ready.get(identifier, False)
     
-    def get_file_paths(self, file):
+    def get_file_paths(self, file: File) -> tuple[str, str]:
         file_bucket = self._file_bucket(file)
         
         if file.ext:
@@ -80,100 +87,100 @@ class hoordu:
             thumbpath = '{}/{}/{}'.format(self.thumbspath, file_bucket, file.id)
         
         return filepath, thumbpath
-    
-    
-    def _is_plugin_supported(self, version):
+
+    def _is_plugin_supported(self, version: str) -> bool:
         version = packaging.version.parse(version)
         # same major, greater or equal to current
         return version.major == self.version.major and self.version >= version
     
-    def _setup_plugin(self, Plugin_cls, parameters=None):
-        id = Plugin_cls.id
-        
-        ready = self._plugins_ready.get(id, False)
-        if ready:
-            return True, None
-        
+    async def _setup_plugin(self,
+        Plugin_cls: Type[PluginBase],
+        parameters: Dynamic = None
+    ) -> tuple[bool, Form | None]:
         if not self._is_plugin_supported(Plugin_cls.required_hoordu):
-            raise ValueError('plugin {} is unsupported'.format(id))
+            raise ValueError(f'plugin {Plugin_cls.id} is unsupported')
         
-        with self._session:
+        async with self._session as session:
             # create source
-            source = self._session.query(Source) \
-                    .filter(Source.name == Plugin_cls.name) \
+            source = await session.select(Source) \
+                    .where(Source.name == Plugin_cls.name) \
                     .one_or_none()
             
             source_exists = source is not None
             if not source_exists:
                 source = Source(name=Plugin_cls.name)
-                self._session.add(source)
-                self._session.flush()
+                session.add(source)
+                await session.flush()
             
             # create plugin
-            plugin = self._session.query(Plugin) \
-                    .filter(Plugin.name == Plugin_cls.id) \
+            plugin = await session.select(Plugin) \
+                    .where(Plugin.name == Plugin_cls.id) \
                     .one_or_none()
             
             if plugin is None:
-                p = Plugin(name=Plugin_cls.id, version=0, source=source)
-                self._session.add(p)
-                self._session.flush()
+                plugin = Plugin(name=Plugin_cls.id, version=0, source=source)
+                session.add(plugin)
+                await session.flush()
             
             # preferred plugin
             if not source_exists:
-                source.preferred_plugin = p
-                self._session.add(source)
-                self._session.flush()
+                source.preferred_plugin = plugin
+                session.add(source)
+                await session.flush()
             
-            Plugin_cls.update(self._session)
-            success, form = Plugin_cls.setup(self._session, parameters=parameters)
+            await Plugin_cls.update(session)
+            success, form = await Plugin_cls.setup(session, parameters=parameters)
+            await session.commit()
         
             if success:
                 if Plugin_cls.id not in self._plugins:
                     self._plugins[Plugin_cls.id] = Plugin_cls
                 
-                self._plugins_ready[id] = True
+                self._plugins_ready[Plugin_cls.id] = True
             
             return success, form
     
-    def parse_url(self, url):
+    async def parse_url(self, url: str) -> list[tuple[Type[SimplePlugin], str | Dynamic]]:
         plugins = []
         
-        for id, Plugin_cls in self._plugins.items():
-            # don't use reverse search plugins
-            if issubclass(Plugin_cls, SimplePluginBase):
-                options = Plugin_cls.parse_url(url)
+        for identifier, Plugin_cls in self._plugins.items():
+            if issubclass(Plugin_cls, SimplePlugin):
+                options = await Plugin_cls.parse_url(url)
                 if options is not None:
                     plugins.append((Plugin_cls, options))
         
         return plugins
     
-    def setup_plugin(self, id, parameters=None):
-        Plugin_cls = self._get_plugin(id)
+    async def setup_plugin(self,
+        identifier: str | Type[PluginBase],
+        parameters: Optional[Dynamic] = None
+    ) -> tuple[bool, Form | None]:
+        Plugin_cls = self._get_plugin(identifier)
         if Plugin_cls is not None:
-            return self._setup_plugin(Plugin_cls, parameters)
+            return await self._setup_plugin(Plugin_cls, parameters)
         
         # check for new plugins
         ctors, errors = self.config.load_plugins()
         self._plugins.update(ctors)
         
-        Plugin_cls = self._get_plugin(id)
+        Plugin_cls = self._get_plugin(identifier)
         if Plugin_cls is not None:
-            return self._setup_plugin(Plugin_cls, parameters)
+            return await self._setup_plugin(Plugin_cls, parameters)
         
         # check if this plugin failed to load
-        exc = errors.get(id)
+        exc = errors.get(identifier)
         if exc is not None:
-            raise ValueError(f'plugin {id} failed to load') from exc
+            raise ValueError(f'plugin {identifier} failed to load') from exc
         
-        raise ValueError(f'plugin {id} does not exist')
+        raise ValueError(f'plugin {identifier} does not exist')
     
-    def load_plugin(self, id):
-        if not self._is_plugins_ready(id):
-            if not self.setup_plugin(id)[0]:
-                raise ValueError(f'plugin {id} needs to be setup before use')
+    async def load_plugin(self, identifier: str | Type[PluginBase]) -> Type[PluginBase]:
+        if not self._is_plugins_ready(identifier):
+            success, _ = await self.setup_plugin(identifier)
+            if not success:
+                raise ValueError(f'plugin {identifier} needs to be setup before use')
         
-        return self._get_plugin(id)
+        return self._get_plugin(identifier)
     
-    def session(self):
+    def session(self) -> HoorduSession:
         return HoorduSession(self)

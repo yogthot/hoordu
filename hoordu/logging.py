@@ -5,7 +5,7 @@ __all__ = [
     'configure_logger'
 ]
 
-class LoggingParentFilter:
+class LoggingParentFilter(logging.Filter):
     def filter(self, record):
         if record.name.startswith('hoordu.'):
             record.name = record.name.split('.', 1)[-1]

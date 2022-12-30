@@ -1,16 +1,15 @@
 #!/usr/bin/env python3
 
+import asyncio
 import shutil
 import pathlib
 
 import hoordu
 from hoordu.models import *
+from hoordu.session import HoorduSession
 
 config = hoordu.load_config()
 hrd = hoordu.hoordu(config)
-
-session = hrd.session()
-
 basepath = pathlib.Path(config.settings.base_path)
 
 debug = True
@@ -28,7 +27,7 @@ def move_file(src, dst):
         try: shutil.move(src, dst)
         except: pass
 
-def check(path, isorig=True):
+async def check(session: HoorduSession, path, isorig=True):
     for bucket in path.iterdir():
         for file in bucket.iterdir():
             file_id = None
@@ -41,7 +40,7 @@ def check(path, isorig=True):
                 delete_file(file)
                 continue
             
-            db_file = session.query(File).filter(File.id == file_id).one_or_none()
+            db_file = await session.select(File).where(File.id == file_id).one_or_none()
             if db_file is None:
                 delete_file(file)
                 
@@ -52,8 +51,12 @@ def check(path, isorig=True):
                 
                 if file != actual_path:
                     move_file(file, actual_path)
-                
 
-check(basepath / 'files', True)
-check(basepath / 'thumbs', False)
+def main():
+    async with hrd.session() as session:
+        check(session, basepath / 'files', True)
+        check(session, basepath / 'thumbs', False)
+
+
+asyncio.run(main())
 

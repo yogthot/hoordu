@@ -2,89 +2,47 @@ import os
 import re
 import json
 from pathlib import Path
+from typing import Type, Optional
 
 import importlib
 import importlib.util
 import importlib.machinery
 
-class Dynamic(dict):
-    def __getattr__(self, name):
-        try:
-            return self[name]
-        except KeyError:
-            raise AttributeError
-    
-    def __setattr__(self, name, value):
-        self[name] = value
-    
-    def contains(self, *keys):
-        return set(keys).issubset(self)
-    
-    def defined(self, *keys):
-        return all(self.get(key) is not None for key in keys)
-    
-    def to_json(self):
-        return json.dumps(self, separators=(',', ':'))
-    
-    def to_file(self, filename):
-        with open(filename, 'w+') as json_file:
-            json.dump(self, json_file)
-    
-    @classmethod
-    def from_module(cls, filename):
-        module_name = '_hoordu_config.' + Path(filename).name.split('.')[0]
-        module = importlib.machinery.SourceFileLoader(module_name, filename).load_module()
-        
-        return cls((k, getattr(module, k)) for k in dir(module) if not k.startswith('_'))
-    
-    @classmethod
-    def from_json(cls, json_string):
-        if json_string is None:
-            return cls()
-        
-        s = json.loads(json_string, object_hook=cls)
-        
-        if not isinstance(s, cls):
-            raise ValueError('json string is not an object')
-        
-        return s
-    
-    @classmethod
-    def from_file(cls, filename):
-        with open(filename) as json_file:
-            s = json.load(json_file, object_hook=cls)
-        
-        if not isinstance(s, cls):
-            raise ValueError('json string is not an object')
-        
-        return s
+from .dynamic import Dynamic
+from .plugins import PluginBase
+
+__all__ = [
+    'HoorduConfig',
+    'load_config'
+]
 
 class HoorduConfig:
     PLUGIN_FILE_REGEX = re.compile('^(?P<plugin_id>[^\.]+)\.py$', re.IGNORECASE)
     
     def __init__(self, home):
-        self.home = Path(home)
-        self.settings = Dynamic.from_module(str(self.home / 'hoordu.conf'))
+        self.home: Path = Path(home)
+        self.settings: Dynamic = Dynamic.from_module(str(self.home / 'hoordu.conf'))
         
-        self.plugins = {}
-        self._plugin_path = (self.home / 'plugins').resolve()
-        self._plugin_package = '_hoordu_plugin'
+        self.plugins: dict[str, Type[PluginBase]] = dict()
+        self._plugin_path: Path = (self.home / 'plugins').resolve()
+        self._plugin_package: str = '_hoordu_plugin'
         
         self._load_init()
     
-    def _load_init(self):
+    def _load_init(self) -> None:
         init_file = self._plugin_path / '__init__.py'
         
         if not init_file.exists():
+            init_file.parent.mkdir(parents=True, exist_ok=True)
             init_file.touch()
         
         importlib.machinery.SourceFileLoader(self._plugin_package, str(init_file)).load_module()
     
-    def load_plugin(self, plugin_id):
+    def load_plugin(self, plugin_id: str) -> Type[PluginBase]:
         module = importlib.import_module(f'{self._plugin_package}.{plugin_id}')
         return module.Plugin
     
-    def load_plugins(self):
+    def load_plugins(self) -> tuple[dict[str, Type[PluginBase]], dict[str, Exception]]:
         errors = {}
         
         for script in self._plugin_path.iterdir():
@@ -109,7 +67,7 @@ class HoorduConfig:
         
         return self.plugins, errors
 
-def load_config():
+def load_config() -> HoorduConfig:
     paths = []
     env_path = os.environ.get('HOORDU_HOME', None)
     
