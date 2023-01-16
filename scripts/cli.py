@@ -70,6 +70,9 @@ def parse_sub_name(arg, args):
         args.subscription = arg
 
 async def parse_url(hrd, arg, args):
+    if args.local:
+        return None, int(arg)
+    
     plugins = await hrd.parse_url(arg)
     if len(plugins) == 0:
         fail(f'unable to download url: {arg}')
@@ -118,6 +121,7 @@ async def parse_args(hrd):
     args.subscription = None
     args.num_posts = None
     args.disabled = False
+    args.local = False
     
     argi = 1
     sargi = 0 # sub argument count
@@ -141,6 +145,9 @@ async def parse_args(hrd):
             
         elif arg == '-d' or arg == '--disabled':
             args.disabled = True
+            
+        elif arg == '-l' or arg == '--local':
+            args.local = True
             
         elif args.command is None:
             # pick command, or append to list or urls
@@ -481,7 +488,7 @@ async def main():
         elif args.command == 'related':
             plugin_id, post_id = args.urls[0]
             plugin = await session.plugin(plugin_id)
-            post = plugin.download(post_id)
+            post = await plugin.download(post_id)
             await session.commit()
             
             for plugin_id, post_id in args.urls[1:]:
@@ -491,23 +498,36 @@ async def main():
                 await session.commit()
             
         elif args.command in ('info', 'files'):
-            plugin, id = args.urls[0]
-            
-            if not isinstance(id, str):
-                fail('failed to parse post url')
-            
-            post = await session.select(RemotePost) \
-                    .options(selectinload(RemotePost.files)) \
-                    .where(RemotePost.original_id == id) \
-                    .one_or_none()
+            if not args.local:
+                plugin, id = args.urls[0]
+                
+                if not isinstance(id, str):
+                    fail('failed to parse post url')
+                
+                post = await session.select(RemotePost) \
+                        .options(selectinload(RemotePost.files)) \
+                        .where(RemotePost.original_id == id) \
+                        .one_or_none()
+                
+            else:
+                plugin, id = args.urls[0]
+                
+                post = await session.select(RemotePost) \
+                        .options(selectinload(RemotePost.files)) \
+                        .where(RemotePost.id == id) \
+                        .one_or_none()
             
             if post is None:
                 fail('post does not exist')
             
             if args.command == 'info':
-                print(f'plugin: {plugin.name}')
+                if plugin:
+                    print(f'plugin: {plugin.name}')
                 print(f'local id: {post.id}')
                 print(f'original id: {post.original_id}')
+                
+                for rel in await post.fetch(RemotePost.related):
+                    print(f'  related: {rel.remote_id}')
             
             for f in post.files:
                 orig, thumb = hrd.get_file_paths(f)
