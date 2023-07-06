@@ -283,10 +283,37 @@ async def setup_plugin(hrd, id):
             fail('something went wrong with the plugin setup')
 
 
-async def safe_fetch(session, iterator):
-    posts = {}
+async def safe_dl(session, plugin_id, post_id):
     while True:
         try:
+            plugin = await session.plugin(plugin_id)
+            post = await plugin.download(post_id)
+            await session.commit()
+            return post
+            
+        except Exception:
+            traceback.print_exc()
+            print(f'error while downloading {post_id} from {plugin_id}')
+            v = input('do you want to retry? (Yn) ').lower()
+            if not v: v = 'y'
+            if v == 'y':
+                # make sure we retry from a valid db state
+                await session.flush()
+                continue
+                
+            else:
+                await session.rollback()
+                return None
+
+async def safe_fetch(session, plugin, subscription, direction, num_posts):
+    posts = {}
+    iterator = None
+    
+    while True:
+        try:
+            if iterator is None:
+                iterator = await plugin.create_iterator(subscription, direction=direction, num_posts=num_posts)
+            
             async for remote_post in iterator:
                 posts[remote_post.id] = remote_post
             
@@ -294,30 +321,32 @@ async def safe_fetch(session, iterator):
             
         except Exception:
             traceback.print_exc()
-            if iterator.subscription is not None:
-                subscription = iterator.subscription
-                name = subscription.name
-                print(f'subscription "{name}" ran into an error')
-                print('y = retry; d = rollback, ignore and disable subscription; n = just rollback and ignore')
-                v = input('do you want to retry? (Ynd) ').lower()
-                if not v: v = 'y'
-                if v == 'y':
-                    # make sure we retry from a valid db state
-                    await session.flush()
-                    continue
-                    
-                elif v == 'd':
-                    await session.rollback()
-                    
-                    await session.refresh(subscription)
-                    subscription.enabled = False
-                    session.add(subscription)
-                    await session.commit()
-                    return
-                    
-                else:
-                    await session.rollback()
-                    return
+            name = subscription.name
+            print(f'subscription "{name}" ran into an error')
+            print('y = retry; d = rollback, ignore and disable subscription; n = just rollback and ignore')
+            v = input('do you want to retry? (Yndx) ').lower()
+            if not v: v = 'y'
+            if v == 'y':
+                # make sure we retry from a valid db state
+                await session.flush()
+                continue
+                
+            elif v == 'd':
+                await session.rollback()
+                
+                await session.refresh(subscription)
+                subscription.enabled = False
+                session.add(subscription)
+                await session.commit()
+                return
+                
+            elif v == 'x':
+                await session.rollback()
+                raise Exception('exiting per request')
+                
+            else:
+                await session.rollback()
+                return
 
 async def process_sub(session, plugin_id, options):
     plugin = await session.plugin(plugin_id)
@@ -346,7 +375,7 @@ related:
             sys.exit(0)
     
     try:
-        return await plugin.subscribe(sub_name, options=options)
+        return await plugin.subscribe(sub_name, options=options, details=details)
         
     except IntegrityError:
         await session.rollback()
@@ -387,9 +416,7 @@ async def main():
             
             else:
                 for plugin_id, post_id in args.urls:
-                    plugin = await session.plugin(plugin_id)
-                    await plugin.download(post_id)
-                    await session.commit()
+                    await safe_dl(session, plugin_id, post_id)
         
         
         elif args.command == 'setup':
@@ -442,11 +469,11 @@ async def main():
                         .all()
             
             for sub in subs:
+                await session.refresh(sub)
                 if sub.enabled:
                     print(f'getting all new posts for subscription \'{sub.name}\'')
                     plugin = await session.plugin((await sub.fetch('plugin')).name)
-                    it = await plugin.create_iterator(sub, direction=FetchDirection.newer, num_posts=None)
-                    await safe_fetch(session, it)
+                    await safe_fetch(session, plugin, sub, FetchDirection.newer, None)
                     await session.commit()
             
         elif args.command in ('update', 'fetch', 'rfetch'):
@@ -476,8 +503,7 @@ async def main():
             direction = FetchDirection.older if args.command == 'fetch' else FetchDirection.newer
             
             plugin = await session.plugin((await sub.fetch('plugin')).name)
-            it = await plugin.create_iterator(sub, direction=direction, num_posts=args.num_posts)
-            await safe_fetch(session, it)
+            await safe_fetch(session, plugin, sub, direction, args.num_posts)
             
             if sub.plugin_id != plugin.plugin.id:
                 # set the preferred plugin to last used plugin

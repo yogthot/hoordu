@@ -37,6 +37,14 @@ class SearchDetails:
             self.related_urls = set(related_urls)
         else:
             self.related_urls = set()
+    
+    def to_json(self):
+        d = Dynamic({
+            'title': self.title,
+            'description': self.description,
+            'related_urls': self.related_urls,
+        })
+        return d.to_json()
 
 
 class IteratorBase(AsyncIterable[RemotePost], Generic[P]):
@@ -294,6 +302,7 @@ class SimplePlugin(PluginBase):
     async def subscribe(self,
         name: str,
         options: Optional[Dynamic] = None,
+        details: Optional[SearchDetails] = None,
         iterator: Optional[IteratorBase] = None
     ) -> IteratorBase:
         """
@@ -314,6 +323,9 @@ class SimplePlugin(PluginBase):
             options=iterator.options.to_json(),
             state=iterator.state.to_json()
         )
+        
+        if details is not None:
+            sub.metadata_ = details.to_json()
         
         self.session.add(sub)
         await self.session.flush()

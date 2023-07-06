@@ -416,6 +416,7 @@ class Subscription(Base, FetchMixin):
     
     options = Column(Text)
     state = Column(Text)
+    metadata_ = Column('metadata', Text)
     
     flags = Column(Integer, default=SubscriptionFlags.none, nullable=False)
     
