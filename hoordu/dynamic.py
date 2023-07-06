@@ -7,6 +7,12 @@ import importlib
 import importlib.util
 import importlib.machinery
 
+class GenericEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, set):
+            return list(obj)
+        
+        return super().default(obj)
 
 class Dynamic(dict):
     def __getattr__(self, name: str) -> Any:
@@ -40,7 +46,7 @@ class Dynamic(dict):
         return cur
     
     def to_json(self) -> str:
-        return json.dumps(self, separators=(',', ':'))
+        return json.dumps(self, separators=(',', ':'), cls=GenericEncoder)
     
     def to_file(self, filename: str | os.PathLike) -> None:
         with open(filename, 'w+') as json_file:

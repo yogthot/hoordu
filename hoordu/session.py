@@ -137,6 +137,10 @@ class HoorduSession:
     async def download(self, *args, **kwargs) -> tuple[str, Response]:
         return await self.requests.download(*args, **kwargs)
     
+    async def request(self, *args, **kwargs) -> Response:
+        return await self.requests.request(*args, **kwargs)
+    
+    
     async def import_file(self,
         file: File,
         orig: str = None,
@@ -150,14 +154,14 @@ class HoorduSession:
             file.mime = await mime_from_file(orig)
             suffixes = pathlib.Path(orig).suffixes
             if len(suffixes):
-                file.ext = suffixes[-1][1:]
+                file.ext = suffixes[-1][1:20]
             else:
                 file.ext = None
         
         if thumb is not None:
             suffixes = pathlib.Path(thumb).suffixes
             if len(suffixes):
-                file.thumb_ext = suffixes[-1][1:]
+                file.thumb_ext = suffixes[-1][1:20]
             else:
                 file.thumb_ext = None
         

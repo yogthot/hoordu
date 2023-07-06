@@ -22,6 +22,10 @@ class hoordu:
         self.config: HoorduConfig = config
         self.settings: Dynamic = config.settings
         
+        useragent = self.settings.get('useragent')
+        if useragent is not None:
+            self.useragent = useragent
+        
         self.engine = create_async_engine(self.settings.database, echo=self.settings.get('debug', False))
         self._sessionmaker = sessionmaker(
             self.engine, expire_on_commit=False, class_=AsyncSession

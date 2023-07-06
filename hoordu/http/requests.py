@@ -36,9 +36,7 @@ class Response:
 class DefaultRequestManager:
     def __init__(self):
         self._http: aiohttp.ClientSession
-        self.headers: dict[str, str] = {
-            'Accept-Encoding': 'gzip, deflate, br'
-        }
+        self.headers: dict[str, str] = {}
         self._stack: contextlib.AsyncExitStack | None = None
     
     async def __aenter__(self):
@@ -91,6 +89,7 @@ class DefaultRequestManager:
         elif data is not None:
             kwargs['data'] = data
         
+        self._http.cookie_jar.clear()
         return self._http.request(method, url, **kwargs)
     
     async def request(self, url: str, **kwargs) -> Response:
@@ -113,60 +112,59 @@ class DefaultRequestManager:
             dst_path = Path(dst_path)
         
         async with self._request(url, **kwargs) as r:
-            if r.status == 200:
-                final_url = str(r.url)
+            if r.status != 200:
+                raise HTTPError(r.status, r, f'{r.status} while downloading: {url}')
+            
+            final_url = str(r.url)
 
-                if final_url is None:
-                    final_url = url
+            if final_url is None:
+                final_url = url
 
-                if isinstance(final_url, bytes):
-                    final_url = final_url.decode('utf-8')
+            if isinstance(final_url, bytes):
+                final_url = final_url.decode('utf-8')
 
-                if dst_path and dst_path.is_file():
-                    path = dst_path
-                    file = open(dst_path, 'w+b')
-                    
-                else:
-                    if suffix is None:
-                        content_disposition = r.headers.get('content-disposition')
-                        attachment_filename = None
-                        if content_disposition is not None:
-                            attachment_filename = safe_rfc6266_filename(content_disposition)
-                            
-                        if attachment_filename is not None:
-                            suffix = attachment_filename
-                            
-                        else:
-                            suffix = Path(urlparse(final_url).path).name
-                    
-                    suffix = suffix.replace('/', '_')
-                    
-                    if dst_path:
-                        if not suffix:
-                            fd, path = mkstemp(dir=dst_path)
-                            file = os.fdopen(fd, 'w+b')
-                            
-                        else:
-                            path = dst_path / suffix
-                            file = open(path, 'w+b')
-                        
-                    else:
-                        fd, path = mkstemp(suffix=suffix)
-                        file = os.fdopen(fd, 'w+b')
-                
-                with file as f:
-                    write = wrap_async(f.write)
-                    async for data in r.content.iter_chunked(1024):
-                        await write(data)
-                
-                return path, Response(
-                    url=final_url,
-                    status=r.status,
-                    reason=r.reason,
-                    headers=[(k, v) for k, v in r.headers.items()],
-                    data=None
-                )
+            if dst_path and dst_path.is_file():
+                path = dst_path
+                file = open(dst_path, 'w+b')
                 
             else:
-                raise HTTPError(r.status, r, f'{r.status} while downloading: {url}')
+                if suffix is None:
+                    content_disposition = r.headers.get('content-disposition')
+                    attachment_filename = None
+                    if content_disposition is not None:
+                        attachment_filename = safe_rfc6266_filename(content_disposition)
+                        
+                    if attachment_filename is not None:
+                        suffix = attachment_filename
+                        
+                    else:
+                        suffix = Path(urlparse(final_url).path).name
+                
+                suffix = suffix.replace('/', '_')
+                
+                if dst_path:
+                    if not suffix:
+                        fd, path = mkstemp(dir=dst_path)
+                        file = os.fdopen(fd, 'w+b')
+                        
+                    else:
+                        path = dst_path / suffix
+                        file = open(path, 'w+b')
+                    
+                else:
+                    fd, path = mkstemp(suffix=suffix)
+                    file = os.fdopen(fd, 'w+b')
+            
+            with file as f:
+                write = wrap_async(f.write)
+                async for data in r.content.iter_chunked(1024):
+                    await write(data)
+            
+            return Path(path), Response(
+                url=final_url,
+                status=r.status,
+                reason=r.reason,
+                headers=[(k, v) for k, v in r.headers.items()],
+                data=None
+            )
 
