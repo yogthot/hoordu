@@ -1,0 +1,5 @@
+# hoordu extension
+comment = 'hoordu - text search configuration for hoordu'
+default_version = '1.0'
+module_pathname = '$libdir/hoordu'
+relocatable = true
