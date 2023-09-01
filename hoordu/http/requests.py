@@ -104,12 +104,14 @@ class DefaultRequestManager:
     
     async def download(self,
         url: str,
-        dst_path: Optional[str | os.PathLike] = None,
+        destination: Optional[str | os.PathLike] = None,
         suffix: Optional[str] = None,
         **kwargs
     ) -> tuple[str, Response]:
-        if dst_path:
-            dst_path = Path(dst_path)
+        if destination:
+            dst_path = Path(destination)
+        else:
+            dst_path = None
         
         async with self._request(url, **kwargs) as r:
             if r.status != 200:
@@ -123,7 +125,7 @@ class DefaultRequestManager:
             if isinstance(final_url, bytes):
                 final_url = final_url.decode('utf-8')
 
-            if dst_path and dst_path.is_file():
+            if destination and not str(destination).endswith('/'):
                 path = dst_path
                 file = open(dst_path, 'w+b')
                 

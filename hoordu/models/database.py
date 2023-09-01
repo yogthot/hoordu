@@ -3,7 +3,7 @@ from enum import Enum, IntFlag, auto
 import json
 from typing import Any
 
-from sqlalchemy import Table, Column, Integer, String, Text, LargeBinary, DateTime, ForeignKey, Index, func, inspect, select, insert
+from sqlalchemy import Table, Column, Integer, String, Text, LargeBinary, DateTime, Numeric, ForeignKey, Index, func, inspect, select, insert
 from sqlalchemy.orm import relationship, ColumnProperty, RelationshipProperty
 from sqlalchemy.orm.attributes import InstrumentedAttribute
 from sqlalchemy.ext.declarative import declarative_base
@@ -11,6 +11,32 @@ from sqlalchemy.ext.asyncio import async_object_session
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy_fulltext import FullText
 from sqlalchemy_utils import ChoiceType
+
+__all__ = [
+    'FlagProperty',
+    'TagCategory',
+    'TagFlags',
+    'PostFlags',
+    'PostType',
+    'FileFlags',
+    'SubscriptionFlags',
+    
+    'Base',
+    'Tag',
+    'Post',
+    'Source',
+    'Plugin',
+    'RemoteTag',
+    'RemotePost',
+    'File',
+    'FeedEntry',
+    'Subscription',
+    'TagTranslation',
+    'Related',
+    
+    'post_tag',
+    'remote_post_tag',
+]
 
 Base = declarative_base()
 
@@ -394,10 +420,17 @@ class File(Base, FetchMixin, MetadataHelper):
             self.flags = FileFlags.none
 
 
-subscription_post = Table('feed', Base.metadata,
-    Column('subscription_id', Integer, ForeignKey('subscription.id', ondelete='CASCADE'), nullable=False, index=True),
-    Column('remote_post_id', Integer, ForeignKey('remote_post.id', ondelete='CASCADE'), nullable=False)
-)
+class FeedEntry(Base, FetchMixin):
+    __tablename__ = 'feed'
+    subscription_id = Column(Integer, ForeignKey('subscription.id', ondelete='CASCADE'), primary_key=True)
+    remote_post_id = Column(Integer, ForeignKey('remote_post.id', ondelete='CASCADE'), primary_key=True)
+    
+    sort_index = Column(Numeric, nullable=False, default=0)
+    
+    # references
+    post = relationship('RemotePost')
+    subscription = relationship('Subscription', back_populates='feed')
+
 
 class SubscriptionFlags(IntFlag):
     none = 0
@@ -426,7 +459,7 @@ class Subscription(Base, FetchMixin):
     # references
     source = relationship('Source', back_populates='subscriptions')
     plugin = relationship('Plugin')
-    feed = relationship('RemotePost', secondary=subscription_post)
+    feed = relationship('FeedEntry', back_populates='subscription')
     
     # flags
     enabled = FlagProperty('flags', SubscriptionFlags.enabled)
@@ -441,22 +474,31 @@ class Subscription(Base, FetchMixin):
         if 'flags' not in kwargs:
             self.flags = SubscriptionFlags.enabled
     
-    async def add_post(self, post: RemotePost) -> bool:
+    async def add_post(self, post: RemotePost, sort_index=None) -> bool:
+        if sort_index is None:
+            try:
+                sort_index = int(post.original_id)
+            except (ValueError, TypeError):
+                raise ValueError('sort_index cannot be None')
+        
         session = async_object_session(self)
         await session.flush()
         
-        exists = await session.execute(select(Subscription) \
-                .join(subscription_post) \
+        exists = await session.execute(select(FeedEntry) \
                 .where(
-                    Subscription.id == self.id,
-                    subscription_post.c.remote_post_id == post.id
+                    FeedEntry.subscription_id == self.id,
+                    FeedEntry.remote_post_id == post.id
                 ).exists().select())
         
         if exists.scalar():
             return False
         
-        await session.execute(insert(subscription_post) \
-                .values(subscription_id=self.id, remote_post_id=post.id))
+        await session.execute(insert(FeedEntry) \
+                .values(
+                    subscription_id=self.id,
+                    remote_post_id=post.id,
+                    sort_index=sort_index
+                ))
         
         return True
 

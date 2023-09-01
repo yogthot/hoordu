@@ -4,15 +4,15 @@ import sys
 import traceback
 from getpass import getpass
 
-from sqlalchemy.orm import selectinload
-
 import hoordu
 from hoordu.models import *
 from hoordu.plugins import FetchDirection
 from hoordu.forms import *
 from hoordu.oauth.server import OAuthServer
 
+from sqlalchemy.orm import selectinload
 from sqlalchemy.exc import IntegrityError
+
 
 def fail(error):
     print(f'error: {error}', file=sys.stderr)
@@ -390,7 +390,7 @@ related:
             fail('a subscription with the same name already exists')
             
         else:
-            fail(f'this subscription already exists')
+            fail(f'this subscription already exists {options}')
 
 async def main():
     argc = len(sys.argv)

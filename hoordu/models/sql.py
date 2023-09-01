@@ -1,5 +1,6 @@
 
 from functools import wraps
+from sqlalchemy.dialects import postgresql
 
 def _result(fun):
     @wraps(fun)
@@ -26,6 +27,7 @@ class SqlStatement:
         if not callable(fun):
             return fun
         
+        @wraps(fun)
         def wrapper(*args, **kwargs):
             statement = fun(*args, **kwargs)
             return self._clone(statement)
@@ -34,6 +36,11 @@ class SqlStatement:
     
     def execute(self):
         return self._session.execute(self._statement)
+    
+    
+    async def stream(self):
+        return await self._session.stream_scalars(self._statement)
+    
     
     @_result
     async def all(self): ...
@@ -44,3 +51,6 @@ class SqlStatement:
     async def one_or_none(self): ...
     @_result
     async def one(self): ...
+    
+    def __str__(self):
+        return str(self._statement.compile(dialect=postgresql.dialect()))

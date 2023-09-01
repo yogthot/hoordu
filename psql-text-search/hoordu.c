@@ -94,7 +94,10 @@ hoordu_tagparser_nexttoken(PG_FUNCTION_ARGS)
                 found = true;
             }
         }
-        status->p += p_len;
+        
+        // skip adding the space to the output
+        if (!end)
+            status->p += p_len;
     }
     
     if (found)

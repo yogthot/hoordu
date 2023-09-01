@@ -3,6 +3,8 @@ from typing import Type
 import contextlib
 import pathlib
 import shutil
+import os
+import stat
 
 from sqlalchemy import select
 
@@ -170,11 +172,13 @@ class HoorduSession:
         if orig is not None:
             await mkpath(pathlib.Path(dst).parent)
             await mvfun(orig, dst)
+            os.chmod(dst, self.hoordu.config.settings.perms)
             file.present = True
             self.add(file)
         
         if thumb is not None:
             await mkpath(pathlib.Path(tdst).parent)
             await mvfun(thumb, tdst)
+            os.chmod(tdst, self.hoordu.config.settings.perms)
             file.thumb_present = True
             self.add(file)

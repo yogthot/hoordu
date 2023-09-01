@@ -1,7 +1,7 @@
 import json
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Union
 
 import importlib
 import importlib.util
@@ -60,16 +60,11 @@ class Dynamic(dict):
         return cls((k, getattr(module, k)) for k in dir(module) if not k.startswith('_'))
     
     @classmethod
-    def from_json(cls, json_string: str) -> 'Dynamic':
+    def from_json(cls, json_string: str) -> Union['Dynamic', list['Dynamic'], Any]:
         if json_string is None:
             return cls()
         
-        s = json.loads(json_string, object_hook=cls)
-        
-        if not isinstance(s, cls):
-            raise ValueError('json string is not an object')
-        
-        return s
+        return json.loads(json_string, object_hook=cls)
     
     @classmethod
     def from_file(cls, filename: str | os.PathLike) -> 'Dynamic':

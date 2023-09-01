@@ -13,6 +13,7 @@ import pathlib
 import logging
 import os
 import contextlib
+from sqlalchemy import select
 
 P = TypeVar('P')
 
