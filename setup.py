@@ -16,10 +16,10 @@ setup(
     description=description,
     long_description=long_description,
     long_description_content_type='text/markdown',
-    url='https://github.com/Patchonn/py-hoordu',
+    url='https://github.com/yogthot/hoordu',
     license='BSD-3-Clause',
-    author='patchon',
-    author_email='patchon@myon.moe',
+    author='yogthot',
+    author_email='yogthot@myon.moe',
     packages=find_packages(include=['hoordu', 'hoordu.*']),
     include_package_data=True,
     install_requires=[l.strip() for l in open('requirements.txt').readlines()]
