@@ -3,6 +3,7 @@ import asyncio
 import sys
 import traceback
 from getpass import getpass
+from datetime import datetime, timedelta, timezone
 
 import hoordu
 from hoordu.models import *
@@ -31,6 +32,9 @@ def usage():
     print("")
     print("    -d, --disabled")
     print("        list: lists disabled subscriptions instead")
+    print("")
+    print("    -n")
+    print("        skip prompts and immediately exit")
     print("")
     print("available commands:")
     print("    createdb")
@@ -122,6 +126,7 @@ async def parse_args(hrd):
     args.num_posts = None
     args.disabled = False
     args.local = False
+    args.skip_prompts = False
     
     argi = 1
     sargi = 0 # sub argument count
@@ -148,6 +153,9 @@ async def parse_args(hrd):
             
         elif arg == '-l' or arg == '--local':
             args.local = True
+            
+        elif arg == '-n':
+            args.skip_prompts = True
             
         elif args.command is None:
             # pick command, or append to list or urls
@@ -283,7 +291,7 @@ async def setup_plugin(hrd, id):
             fail('something went wrong with the plugin setup')
 
 
-async def safe_dl(session, plugin_id, post_id):
+async def safe_dl(args, session, plugin_id, post_id):
     while True:
         try:
             plugin = await session.plugin(plugin_id)
@@ -291,10 +299,15 @@ async def safe_dl(session, plugin_id, post_id):
             await session.commit()
             return post
             
-        except Exception:
+        except Exception as e:
+            if args.skip_prompts:
+                message = ' | '.join(e.args)
+                print(f'{e.__class__.__name__}: {message}', file=sys.stderr)
+                sys.exit(1)
+            
             traceback.print_exc()
             print(f'error while downloading {post_id} from {plugin_id}')
-            v = input('do you want to retry? (Yn) ').lower()
+            v = input('do you want to retry? (Yn)\a ').lower()
             if not v: v = 'y'
             if v == 'y':
                 # make sure we retry from a valid db state
@@ -305,7 +318,7 @@ async def safe_dl(session, plugin_id, post_id):
                 await session.rollback()
                 return None
 
-async def safe_fetch(session, plugin, subscription, direction, num_posts):
+async def safe_fetch(args, session, plugin, subscription, direction, num_posts):
     posts = {}
     iterator = None
     
@@ -317,14 +330,26 @@ async def safe_fetch(session, plugin, subscription, direction, num_posts):
             async for remote_post in iterator:
                 posts[remote_post.id] = remote_post
             
+            # update subscription updated_time
+            #await session.refresh(subscription)
+            subscription.updated_time = datetime.now(timezone.utc)
+            session.add(subscription)
+            await session.commit()
+            
             return posts
             
-        except Exception:
+        except Exception as e:
+            if args.skip_prompts:
+                message = ' | '.join(e.args)
+                print(f'subscription "{subscription.name}" ran into an error', file=sys.stderr)
+                print(f'{e.__class__.__name__}: {message}', file=sys.stderr)
+                sys.exit(1)
+            
             traceback.print_exc()
             name = subscription.name
             print(f'subscription "{name}" ran into an error')
             print('y = retry; d = rollback, ignore and disable subscription; n = just rollback and ignore')
-            v = input('do you want to retry? (Yndx) ').lower()
+            v = input('do you want to retry? (Yndx)\a ').lower()
             if not v: v = 'y'
             if v == 'y':
                 # make sure we retry from a valid db state
@@ -370,7 +395,7 @@ related:
         sub_name = details.hint
         
     else:
-        sub_name = input('pick a name for the subscription: ')
+        sub_name = input('pick a name for the subscription:\a ')
         if not sub_name:
             sys.exit(0)
     
@@ -416,7 +441,7 @@ async def main():
             
             else:
                 for plugin_id, post_id in args.urls:
-                    await safe_dl(session, plugin_id, post_id)
+                    await safe_dl(args, session, plugin_id, post_id)
         
         
         elif args.command == 'setup':
@@ -458,22 +483,27 @@ async def main():
                 # filter by plugin
                 subs = await session.select(Subscription) \
                         .join(Plugin) \
-                        .where(Plugin.name == args.plugin_id) \
+                        .where(Plugin.name == args.plugin_id, Subscription.updated_time <= datetime.now(timezone.utc) - timedelta(days=1)) \
+                        .order_by(Subscription.updated_time.asc()) \
                         .all()
                 
             else:
                 # filter by source
                 subs = await session.select(Subscription) \
                         .join(Source) \
-                        .where(Source.name == args.source) \
+                        .where(Source.name == args.source, Subscription.updated_time <= datetime.now(timezone.utc) - timedelta(days=1)) \
+                        .order_by(Subscription.updated_time.asc()) \
                         .all()
             
-            for sub in subs:
+            subs = [sub for sub in subs if sub.enabled]
+            total = len(subs)
+            
+            for i, sub in enumerate(subs):
                 await session.refresh(sub)
                 if sub.enabled:
-                    print(f'getting all new posts for subscription \'{sub.name}\'')
+                    print(f'getting all new posts for subscription \'{sub.name}\' ({i}/{total})')
                     plugin = await session.plugin((await sub.fetch('plugin')).name)
-                    await safe_fetch(session, plugin, sub, FetchDirection.newer, None)
+                    await safe_fetch(args, session, plugin, sub, FetchDirection.newer, None)
                     await session.commit()
             
         elif args.command in ('update', 'fetch', 'rfetch'):
@@ -503,7 +533,7 @@ async def main():
             direction = FetchDirection.older if args.command == 'fetch' else FetchDirection.newer
             
             plugin = await session.plugin((await sub.fetch('plugin')).name)
-            await safe_fetch(session, plugin, sub, direction, args.num_posts)
+            await safe_fetch(args, session, plugin, sub, direction, args.num_posts)
             
             if sub.plugin_id != plugin.plugin.id:
                 # set the preferred plugin to last used plugin

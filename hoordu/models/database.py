@@ -160,8 +160,8 @@ class Tag(Base, FetchMixin):
     
     flags = Column(Integer, default=TagFlags.none, nullable=False)
     
-    created_time = Column(DateTime(timezone=False), default=datetime.utcnow, nullable=False)
-    updated_time = Column(DateTime(timezone=False), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_time = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    updated_time = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     
     # flags
     favorite = FlagProperty('flags', TagFlags.favorite)
@@ -202,10 +202,10 @@ class Post(Base, FetchMixin, MetadataHelper):
     flags = Column(Integer, default=PostFlags.none, nullable=False)
     
     metadata_ = Column('metadata', Text)
-    post_time = Column(DateTime(timezone=False))
+    post_time = Column(DateTime(timezone=True))
     
-    created_time = Column(DateTime(timezone=False), default=datetime.utcnow, nullable=False)
-    updated_time = Column(DateTime(timezone=False), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_time = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    updated_time = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     
     # references
     tags = relationship('Tag', secondary=post_tag)
@@ -234,8 +234,8 @@ class Source(Base, FetchMixin, MetadataHelper):
     
     metadata_ = Column('metadata', Text)
     
-    created_time = Column(DateTime(timezone=False), default=datetime.utcnow, nullable=False)
-    updated_time = Column(DateTime(timezone=False), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_time = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    updated_time = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     
     # references
     subscriptions = relationship('Subscription', back_populates='source')
@@ -274,8 +274,8 @@ class RemoteTag(Base, FetchMixin, MetadataHelper):
     
     flags = Column(Integer, default=TagFlags.none, nullable=False)
     
-    created_time = Column(DateTime(timezone=False), default=datetime.utcnow, nullable=False)
-    updated_time = Column(DateTime(timezone=False), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_time = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    updated_time = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     
     # references
     source = relationship('Source')
@@ -314,10 +314,10 @@ class RemotePost(Base, FetchMixin, MetadataHelper):
     flags = Column(Integer, default=PostFlags.none, nullable=False)
     
     metadata_ = Column('metadata', Text)
-    post_time = Column(DateTime(timezone=False))
+    post_time = Column(DateTime(timezone=True))
     
-    created_time = Column(DateTime(timezone=False), default=datetime.utcnow, nullable=False)
-    updated_time = Column(DateTime(timezone=False), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_time = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    updated_time = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     
     # references
     source = relationship('Source')
@@ -399,8 +399,8 @@ class File(Base, FetchMixin, MetadataHelper):
     
     flags = Column(Integer, default=FileFlags.none, nullable=False)
     
-    created_time = Column(DateTime(timezone=False), default=datetime.utcnow, nullable=False)
-    updated_time = Column(DateTime(timezone=False), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_time = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    updated_time = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     
     # references
     local = relationship('Post', back_populates='files')
@@ -453,8 +453,8 @@ class Subscription(Base, FetchMixin):
     
     flags = Column(Integer, default=SubscriptionFlags.none, nullable=False)
     
-    created_time = Column(DateTime(timezone=False), default=datetime.utcnow, nullable=False)
-    updated_time = Column(DateTime(timezone=False), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_time = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    updated_time = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     
     # references
     source = relationship('Source', back_populates='subscriptions')
@@ -509,8 +509,8 @@ class TagTranslation(Base, FetchMixin):
     # null local_tag_id -> ignore remote tag
     local_tag_id = Column(Integer, ForeignKey('tag.id', ondelete='CASCADE'))
     
-    created_time = Column(DateTime(timezone=False), default=datetime.utcnow, nullable=False)
-    updated_time = Column(DateTime(timezone=False), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_time = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    updated_time = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     
     # references
     remote_tag = relationship('RemoteTag', back_populates='translation')
