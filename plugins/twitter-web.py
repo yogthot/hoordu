@@ -778,14 +778,14 @@ class Twitter(SimplePlugin):
         media_list = tweet.legacy.get_path('extended_entities', 'media')
         if media_list is not None:
             available = set(range(len(media_list)))
-            present = set(file.remote_order for file in await remote_post.fetch(RemotePost.files))
+            present = set(file.remote_order for file in await remote_post.awaitable_attrs.files)
             
             for order in available - present:
                 file = File(remote=remote_post, remote_order=order)
                 self.session.add(file)
                 await self.session.flush()
             
-            for file in await remote_post.fetch(RemotePost.files):
+            for file in await remote_post.awaitable_attrs.files:
                 need_thumb = not file.thumb_present
                 need_file = not file.present and not preview
                 

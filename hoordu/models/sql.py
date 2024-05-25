@@ -41,6 +41,10 @@ class SqlStatement:
     async def stream(self):
         return await self._session.stream_scalars(self._statement)
     
+    async def rows(self):
+        result = await self._session.stream(self._statement)
+        return await result.all()
+    
     
     @_result
     async def all(self): ...
@@ -51,6 +55,7 @@ class SqlStatement:
     async def one_or_none(self): ...
     @_result
     async def one(self): ...
+    
     
     def __str__(self):
         return str(self._statement.compile(dialect=postgresql.dialect()))

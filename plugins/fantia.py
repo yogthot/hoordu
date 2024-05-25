@@ -300,7 +300,7 @@ class Fantia(SimplePlugin):
             nsfw_tag = await self._get_tag(TagCategory.meta, 'nsfw')
             await remote_post.add_tag(nsfw_tag)
         
-        files = await remote_post.fetch(RemotePost.files)
+        files = await remote_post.awaitable_attrs.files
         if content.category == 'file':
             if len(files) == 0:
                 file = File(remote=remote_post, remote_order=0, filename=content.filename)
@@ -503,7 +503,7 @@ class Fantia(SimplePlugin):
             await remote_post.add_tag(nsfw_tag)
         
         # download thumbnail if there is one
-        files = await remote_post.fetch(RemotePost.files)
+        files = await remote_post.awaitable_attrs.files
         if len(files) == 0:
             if post.thumb is not None:
                 file = File(remote=remote_post, remote_order=0)
@@ -530,7 +530,7 @@ class Fantia(SimplePlugin):
             if content.visible_status == 'visible':
                 content_post = await self._content_to_post(post, content, preview=preview)
                 
-                related = await remote_post.fetch(RemotePost.related)
+                related = await remote_post.awaitable_attrs.related
                 if not any(r.remote_id == content_post.id for r in related):
                     self.session.add(Related(related_to=remote_post, remote=content_post))
                 

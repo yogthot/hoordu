@@ -392,8 +392,6 @@ class Pixiv(SimplePlugin):
         if post.likeData:
             remote_post.favorite = True
         
-        self.session.add(remote_post)
-        
         user_tag = await self._get_tag(TagCategory.artist, user_id)
         await remote_post.add_tag(user_tag)
         
@@ -423,7 +421,7 @@ class Pixiv(SimplePlugin):
         for url in urls:
             await remote_post.add_related_url(url)
         
-        files = await remote_post.fetch(RemotePost.files)
+        files = await remote_post.awaitable_attrs.files
         # files
         if post.illustType == 2:
             # ugoira
@@ -491,7 +489,7 @@ class Pixiv(SimplePlugin):
                 resp.raise_for_status()
                 pages = hoordu.Dynamic.from_json(await resp.text()).body
             
-            files = await remote_post.fetch(RemotePost.files)
+            files = await remote_post.awaitable_attrs.files
             for file in files:
                 need_orig = not file.present and not preview
                 need_thumb = not file.thumb_present
@@ -504,6 +502,7 @@ class Pixiv(SimplePlugin):
                     
                     await self.session.import_file(file, orig=orig, thumb=thumb, move=True)
         
+        self.session.add(remote_post)
         return remote_post
     
     async def download(self, id=None, remote_post=None, preview=False):

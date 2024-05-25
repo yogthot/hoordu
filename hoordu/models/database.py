@@ -4,10 +4,9 @@ import json
 from typing import Any
 
 from sqlalchemy import Table, Column, Integer, String, Text, LargeBinary, DateTime, Numeric, ForeignKey, Index, func, inspect, select, insert
-from sqlalchemy.orm import relationship, ColumnProperty, RelationshipProperty
+from sqlalchemy.orm import relationship, ColumnProperty, RelationshipProperty, DeclarativeBase
 from sqlalchemy.orm.attributes import InstrumentedAttribute
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.ext.asyncio import async_object_session
+from sqlalchemy.ext.asyncio import async_object_session, AsyncAttrs
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy_fulltext import FullText
 from sqlalchemy_utils import ChoiceType
@@ -38,7 +37,8 @@ __all__ = [
     'remote_post_tag',
 ]
 
-Base = declarative_base()
+class Base(AsyncAttrs, DeclarativeBase):
+    pass
 
 class MetadataHelper:
     def __init__(self, *args, **kwargs):
@@ -53,59 +53,6 @@ class MetadataHelper:
 
         else:
             return False
-
-class FetchMixin:
-    def __init__(self, *args, **kwargs):
-        pass
-    
-    async def fetch(self, field: str | Column | RelationshipProperty) -> Base | list[Base] | None:
-        session = async_object_session(self)
-        
-        if isinstance(field, InstrumentedAttribute):
-            column = field
-        else:
-            column = getattr(self.__class__, field)
-        
-        property = column.property
-        
-        if not column.is_attribute or isinstance(property, ColumnProperty):
-            return getattr(self, column.key)
-        
-        elif isinstance(property, RelationshipProperty):
-            related_class = property.entity.entity
-            
-            conditions = []
-            
-            """
-            # more simple approach with join
-            statement = select(related_class).join(self.__class__, property.primaryjoin)
-            
-            for pk in inspect(self.__class__).primary_key:
-                conditions.append(pk == getattr(self, pk.key))
-            # /simple
-            """
-            
-            # possible optimizations without join
-            statement = select(related_class)
-            for l, f in property.local_remote_pairs:
-                if  l.table == self.__table__:
-                    conditions.append(f == getattr(self, l.key))
-            # /optimization
-            
-            if property.secondary is not None:
-                statement = statement.join(property.secondary)
-            
-            statement = statement.where(*conditions)
-            
-            # get result
-            result = await session.stream_scalars(statement)
-            
-            if property.uselist:
-                return await result.all()
-                
-            else:
-                return await result.one_or_none()
-
 
 # convert collations
 @compiles(String, 'postgresql')
@@ -150,7 +97,7 @@ class TagFlags(IntFlag):
     none = 0
     favorite = auto()
 
-class Tag(Base, FetchMixin):
+class Tag(Base):
     __tablename__ = 'tag'
     
     id = Column(Integer, primary_key=True)
@@ -190,7 +137,7 @@ class PostType(Enum):
     blog = 3 # text with files in between (comment is formatted as json)
     # more types can be added as needed
 
-class Post(Base, FetchMixin, MetadataHelper):
+class Post(Base, MetadataHelper):
     __tablename__ = 'post'
     
     id = Column(Integer, primary_key=True)
@@ -222,7 +169,7 @@ class Post(Base, FetchMixin, MetadataHelper):
             self.flags = PostFlags.none
 
 
-class Source(Base, FetchMixin, MetadataHelper):
+class Source(Base, MetadataHelper):
     __tablename__ = 'source'
     
     id = Column(Integer, primary_key=True)
@@ -241,7 +188,7 @@ class Source(Base, FetchMixin, MetadataHelper):
     subscriptions = relationship('Subscription', back_populates='source')
     preferred_plugin = relationship('Plugin', foreign_keys=[preferred_plugin_id])
 
-class Plugin(Base, FetchMixin):
+class Plugin(Base):
     __tablename__ = 'plugin'
     
     id = Column(Integer, primary_key=True)
@@ -260,7 +207,7 @@ remote_post_tag = Table('remote_post_tag', Base.metadata,
     Column('tag_id', Integer, ForeignKey('remote_tag.id', ondelete='CASCADE'), nullable=False)
 )
 
-class RemoteTag(Base, FetchMixin, MetadataHelper):
+class RemoteTag(Base, MetadataHelper):
     __tablename__ = 'remote_tag'
     
     id = Column(Integer, primary_key=True)
@@ -296,7 +243,7 @@ class RemoteTag(Base, FetchMixin, MetadataHelper):
     def __str__(self):
         return '{}:{}'.format(self.category.name, self.tag)
 
-class RemotePost(Base, FetchMixin, MetadataHelper):
+class RemotePost(Base, MetadataHelper):
     __tablename__ = 'remote_post'
     
     id = Column(Integer, primary_key=True)
@@ -344,11 +291,11 @@ class RemotePost(Base, FetchMixin, MetadataHelper):
     
     async def add_tag(self, new_tag: RemoteTag) -> bool:
         if not hasattr(self, '_existing_tags'):
-            self._existing_tags = {(t.category, t.tag) for t in await self.fetch('tags')}
+            self._existing_tags = {(t.category, t.tag) for t in await self.awaitable_attrs.tags}
         
         t = (new_tag.category, new_tag.tag)
         if t not in self._existing_tags:
-            async_object_session(self).add(new_tag)
+            self.tags.append(new_tag)
             self._existing_tags.add(t)
             return True
             
@@ -357,10 +304,10 @@ class RemotePost(Base, FetchMixin, MetadataHelper):
     
     async def add_related_url(self, url: str) -> bool:
         if not hasattr(self, '_existing_urls'):
-            self._existing_urls = {r.url for r in await self.fetch('related')}
+            self._existing_urls = {r.url for r in await self.awaitable_attrs.related}
         
         if url not in self._existing_urls:
-            async_object_session(self).add(Related(url=url))
+            self.related.append(Related(url=url))
             self._existing_urls.add(url)
             return True
             
@@ -377,7 +324,7 @@ class FileFlags(IntFlag):
     present = auto() # if the file is present on the disk
     thumb_present = auto() # if the thumbnail is present on the disk
 
-class File(Base, FetchMixin, MetadataHelper):
+class File(Base, MetadataHelper):
     __tablename__ = 'file'
     
     id = Column(Integer, primary_key=True)
@@ -420,7 +367,7 @@ class File(Base, FetchMixin, MetadataHelper):
             self.flags = FileFlags.none
 
 
-class FeedEntry(Base, FetchMixin):
+class FeedEntry(Base):
     __tablename__ = 'feed'
     subscription_id = Column(Integer, ForeignKey('subscription.id', ondelete='CASCADE'), primary_key=True)
     remote_post_id = Column(Integer, ForeignKey('remote_post.id', ondelete='CASCADE'), primary_key=True)
@@ -436,7 +383,7 @@ class SubscriptionFlags(IntFlag):
     none = 0
     enabled = auto() # won't auto update if disabled
 
-class Subscription(Base, FetchMixin):
+class Subscription(Base):
     __tablename__ = 'subscription'
     
     id = Column(Integer, primary_key=True)
@@ -502,7 +449,7 @@ class Subscription(Base, FetchMixin):
         
         return True
 
-class TagTranslation(Base, FetchMixin):
+class TagTranslation(Base):
     __tablename__ = 'tag_translation'
     
     id = Column(Integer, ForeignKey('remote_tag.id', ondelete='CASCADE'), primary_key=True)
@@ -516,7 +463,7 @@ class TagTranslation(Base, FetchMixin):
     remote_tag = relationship('RemoteTag', back_populates='translation')
     tag = relationship('Tag')
 
-class Related(Base, FetchMixin):
+class Related(Base):
     __tablename__ = 'related'
     
     id = Column(Integer, primary_key=True)

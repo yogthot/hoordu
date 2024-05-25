@@ -346,7 +346,7 @@ class Patreon(SimplePlugin):
         if embed is not None:
             await remote_post.add_related_url(embed.url)
         
-        current_files = {file.metadata_: file for file in await remote_post.fetch(RemotePost.files)}
+        current_files = {file.metadata_: file for file in await remote_post.awaitable_attrs.files}
         
         images = post_obj.relationships.images.data or []
         try:

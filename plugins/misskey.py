@@ -308,7 +308,7 @@ class Misskey(SimplePlugin):
         
         files = note.files
         if len(files) > 0:
-            current_files = {file.metadata_: file for file in await remote_post.fetch(RemotePost.files)}
+            current_files = {file.metadata_: file for file in await remote_post.awaitable_attrs.files}
             
             order = 0
             for rfile in files:

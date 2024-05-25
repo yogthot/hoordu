@@ -309,8 +309,8 @@ class Fanbox(SimplePlugin):
             nsfw_tag = await self._get_tag(TagCategory.meta, 'nsfw')
             await remote_post.add_tag(nsfw_tag)
         
-        current_files = {file.metadata_: file for file in await remote_post.fetch(RemotePost.files)}
-        current_urls = [r.url for r in  await remote_post.fetch(RemotePost.related)]
+        current_files = {file.metadata_: file for file in await remote_post.awaitable_attrs.files}
+        current_urls = [r.url for r in  await remote_post.awaitable_attrs.related]
         
         if not post.isRestricted:
             if post.type == 'image':

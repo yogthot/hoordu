@@ -300,7 +300,7 @@ class GDrive(SimplePlugin):
         self.log.info(f'downloading post: {remote_post.original_id}')
         self.log.info(f'local id: {remote_post.id}')
         
-        files = await remote_post.fetch(RemotePost.files)
+        files = await remote_post.awaitable_attrs.files
         current_files = {file.metadata_: file for file in files}
         
         if not self.api.is_dir(node):

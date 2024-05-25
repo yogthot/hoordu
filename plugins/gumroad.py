@@ -165,7 +165,7 @@ class Gumroad(SimplePlugin):
             content_json = doc.select('script[data-component-name="DownloadPageWithContent"]')[0].text
             content = hoordu.Dynamic.from_json(content_json)
             
-            files = await remote_post.fetch(RemotePost.files)
+            files = await remote_post.awaitable_attrs.files
             current_files = {file.metadata_: file for file in files}
             
             for item, order in zip(content.content.content_items, itertools.count(1)):

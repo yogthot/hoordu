@@ -502,7 +502,7 @@ async def main():
                 await session.refresh(sub)
                 if sub.enabled:
                     print(f'getting all new posts for subscription \'{sub.name}\' ({i}/{total})')
-                    plugin = await session.plugin((await sub.fetch('plugin')).name)
+                    plugin = await session.plugin((await sub.awaitable_attrs.plugin).name)
                     await safe_fetch(args, session, plugin, sub, FetchDirection.newer, None)
                     await session.commit()
             
@@ -532,7 +532,7 @@ async def main():
             
             direction = FetchDirection.older if args.command == 'fetch' else FetchDirection.newer
             
-            plugin = await session.plugin((await sub.fetch('plugin')).name)
+            plugin = await session.plugin((await sub.awaitable_attrs.plugin).name)
             await safe_fetch(args, session, plugin, sub, direction, args.num_posts)
             
             if sub.plugin_id != plugin.plugin.id:
@@ -582,7 +582,7 @@ async def main():
                 print(f'local id: {post.id}')
                 print(f'original id: {post.original_id}')
                 
-                for rel in await post.fetch(RemotePost.related):
+                for rel in await post.awaitable_attrs.related:
                     print(f'  related: {rel.remote_id}')
             
             for f in post.files:

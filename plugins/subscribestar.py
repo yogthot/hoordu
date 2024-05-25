@@ -118,7 +118,7 @@ class SubStarIterator(IteratorBase['SubStar']):
                 if self.num_posts is not None and total >= self.num_posts:
                     return
                 
-                post_id = int(post.select('[data-post_id]')[0].attrs['data-post_id'])
+                post_id = int(post.attrs['data-id'])
                 yield post_id, post
                 
                 total +=1
@@ -288,7 +288,60 @@ class SubStar(SimplePlugin):
         
         return '\n'.join(self._parse_text(e) for e in elements)
     
+    async def _hidden_to_remote_post(self, post_html, remote_post=None, preview=False):
+        original_id = post_html.attrs['data-id']
+        if not original_id:
+            raise APIError('no id found')
+        
+        title = self._get_text(post_html, '.post-title h2')
+        text = None
+        post_date = self._get_text(post_html, '.post-date')
+        if post_date is None:
+            post_date = self._get_text(post_html, '.section-subtitle')
+        
+        post_time = dateutil.parser.parse(post_date).replace(tzinfo=None)
+        
+        user_els = post_html.select('.post-avatar')
+        if not user_els:
+            user_els = post_html.select('.star_link')
+            
+        user = user_els[0].attrs['href'].lstrip('/')
+        
+        
+        if remote_post is None:
+            remote_post = await self._get_post(original_id)
+        
+        remote_post.url = POST_FORMAT.format(user=user, post_id=original_id)
+        remote_post.title = title
+        remote_post.comment = text
+        remote_post.type = PostType.set
+        remote_post.post_time = post_time
+        self.session.add(remote_post)
+        
+        self.log.info(f'downloading post: {remote_post.original_id}')
+        self.log.info(f'local id: {remote_post.id}')
+        
+        user_tag = await self._get_tag(TagCategory.artist, user)
+        await remote_post.add_tag(user_tag)
+        
+        tags = post_html.select('.post-tag')
+        if tags:
+            for tag_element in tags:
+                tagname = tag_element.text.replace(' ', '_')
+                tag = await self._get_tag(TagCategory.general, tagname)
+                await remote_post.add_tag(tag)
+        
+        self.session.add(remote_post)
+        
+        return remote_post
+    
     async def _to_remote_post(self, post_html, remote_post=None, preview=False):
+        post_id_el = post_html.select('[data-post_id]')
+        is_accessible = len(post_id_el) > 0
+        
+        if not is_accessible:
+            return await self._hidden_to_remote_post(post_html, remote_post, preview)
+        
         original_id = post_html.select('[data-post_id]')[0].attrs['data-post_id']
         title = self._get_text(post_html, '.post-content > h1:first-child')
         text = self._get_text(post_html, '.post-content > :not(h1:first-child)')
@@ -330,7 +383,7 @@ class SubStar(SimplePlugin):
         
         self.session.add(remote_post)
         
-        current_files = {file.metadata_: file for file in await remote_post.fetch(RemotePost.files)}
+        current_files = {file.metadata_: file for file in await remote_post.awaitable_attrs.files}
         
         gallery = []
         gallery_els = post_html.select('[data-gallery]')

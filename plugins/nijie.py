@@ -270,14 +270,14 @@ class Nijie(SimplePlugin):
         
         # files
         available = set(range(len(files)))
-        present = set(file.remote_order for file in await remote_post.fetch(RemotePost.files))
+        present = set(file.remote_order for file in await remote_post.awaitable_attrs.files)
         
         for order in available - present:
             file = File(remote=remote_post, remote_order=order)
             self.session.add(file)
             await self.session.flush()
         
-        for file in await remote_post.fetch(RemotePost.files):
+        for file in await remote_post.awaitable_attrs.files:
             f = files[file.remote_order]
             
             orig_url = parse_href(page_url, f['src'].replace('__rs_l120x120/', ''))
