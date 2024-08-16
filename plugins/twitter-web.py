@@ -28,10 +28,10 @@ LIKES_URL = f'https://{DOMAIN}/i/api/graphql/kgZtsNyE46T3JaEf2nF9vw/Likes'
 
 TWEET_FORMAT = 'https://x.com/{user}/status/{tweet_id}'
 TWEET_REGEXP = [
-    re.compile(r'^https?:\/\/x\.com\/(?P<user>[^\/]+)\/status\/(?P<tweet_id>\d+)(?:\/.*)?(?:\?.*)?$', flags=re.IGNORECASE),
-    re.compile(r'^https?:\/\/x\.com\/i\/web\/status\/(?P<tweet_id>\d+)(?:\/.*)?(?:\?.*)?$', flags=re.IGNORECASE)
+    re.compile(r'^https?:\/\/(x|twitter)\.com\/(?P<user>[^\/]+)\/status\/(?P<tweet_id>\d+)(?:\/.*)?(?:\?.*)?$', flags=re.IGNORECASE),
+    re.compile(r'^https?:\/\/(x|twitter)\.com\/i\/web\/status\/(?P<tweet_id>\d+)(?:\/.*)?(?:\?.*)?$', flags=re.IGNORECASE)
 ]
-TIMELINE_REGEXP = re.compile(r'^https?:\/\/x\.com\/(?P<user>[^\/]+)(?:\/(?P<type>[^\/]+)?)?(?:\?.*)?$', flags=re.IGNORECASE)
+TIMELINE_REGEXP = re.compile(r'^https?:\/\/(x|twitter)\.com\/(?P<user>[^\/]+)(?:\/(?P<type>[^\/]+)?)?(?:\?.*)?$', flags=re.IGNORECASE)
 
 PROFILE_IMAGE_REGEXP = re.compile(r'^(?P<base>.+_)(?P<size>[^\.]+)(?P<ext>.+)$')
 
