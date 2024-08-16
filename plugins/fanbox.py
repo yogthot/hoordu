@@ -4,6 +4,7 @@ import re
 from datetime import datetime, timedelta, timezone
 import dateutil.parser
 import itertools
+from urllib.parse import urlparse, parse_qs
 
 import aiohttp
 from bs4 import BeautifulSoup
@@ -30,8 +31,8 @@ CREATOR_REGEXP = [
 
 POST_GET_URL = 'https://api.fanbox.cc/post.info?postId={post_id}'
 POST_EMBED_INFO_URL = 'https://api.fanbox.cc/post.get?postId={related_post_id}'
-CREATOR_POSTS_URL = 'https://api.fanbox.cc/post.listCreator'
-PAGE_LIMIT = 10
+#CREATOR_POSTS_URL = 'https://api.fanbox.cc/post.listCreator'
+CREATOR_PAGINATE_URL = 'https://api.fanbox.cc/post.paginateCreator'
 
 class CreatorIterator(IteratorBase['Fanbox']):
     def __init__(self, fanbox, subscription=None, options=None):
@@ -44,7 +45,6 @@ class CreatorIterator(IteratorBase['Fanbox']):
         self.first_id = None
         self.state.head_id = self.state.get('head_id')
         self.state.tail_id = self.state.get('tail_id')
-        self.state.tail_datetime = self.state.get('tail_datetime')
         
         self.downloaded = set()
     
@@ -90,31 +90,27 @@ class CreatorIterator(IteratorBase['Fanbox']):
         head = (self.direction == FetchDirection.newer)
         
         min_id = int(self.state.head_id) if head and self.state.head_id is not None else None
-        max_id = self.state.tail_id if not head else None
-        max_datetime = self.state.tail_datetime if not head else None
+        max_id = int(self.state.tail_id) if not head else None
+        
+        page_params = {
+            'creatorId': self.options.creator
+        }
+        async with self.http.get(CREATOR_PAGINATE_URL, params=page_params) as response:
+            response.raise_for_status()
+            pages = hoordu.Dynamic.from_json(await response.text()).body
+        
+        if head:
+            page_id = 0
+        else:
+            page_map = [int(parse_qs(urlparse(page).query)['maxId'][0]) for page in pages]
+            page_id = next((i for i, p in enumerate(page_map) if p < max_id), len(page_map))
+            page_id = max(page_id - 1, 0)
         
         first_iteration = True
         while True:
-            page_size = PAGE_LIMIT
-            if self.num_posts is not None:
-                page_size = min(self.num_posts - self.total, PAGE_LIMIT)
-            
-            params = {
-                'creatorId': self.options.creator,
-                'limit': page_size
-            }
-            
-            if max_id is not None:
-                params['maxId'] = int(max_id) - 1
-                # very big assumption that no posts have the time timestamp
-                # fanbox would break if that happened as well
-                d = dateutil.parser.parse(max_datetime).replace(tzinfo=None)
-                params['maxPublishedDatetime'] = (d - timedelta(seconds=1)).strftime('%Y-%m-%d %H:%M:%S')
-            
-            async with self.http.get(CREATOR_POSTS_URL, params=params) as response:
+            async with self.http.get(pages[page_id]) as response:
                 response.raise_for_status()
-                body = hoordu.Dynamic.from_json(await response.text()).body
-                posts = body['items']
+                posts = hoordu.Dynamic.from_json(await response.text()).body
             
             if len(posts) == 0:
                 return
@@ -127,20 +123,20 @@ class CreatorIterator(IteratorBase['Fanbox']):
                 if min_id is not None and sort_index <= min_id:
                     return
                 
-                yield sort_index, post
+                if max_id is not None and sort_index >= max_id:
+                    continue
                 
-                max_id = sort_index - 1
-                max_datetime = post.publishedDatetime
+                yield sort_index, post
                 
                 if self.direction == FetchDirection.older:
                     self.state.tail_id = post.id
-                    self.state.tail_datetime = post.publishedDatetime
                 
                 self.total += 1
                 if self.num_posts is not None and self.total >= self.num_posts:
                     return
             
-            if body.nextUrl is None:
+            page_id += 1
+            if page_id == len(pages):
                 return
             
             first_iteration = False

@@ -9,28 +9,12 @@ Ideally hoordu should communicate with downloader plugins to get the content fro
 
 ## TODO
 
-- PostgreSQL full text search
-- Thumbnail generation
-
-
-## Requirements
-
-I recommend using a [PostgreSQL](https://www.postgresql.org/) backend due to the way this is supposed to work, but sqlite should be compatible as well.
-It's also up to you to pick the [SQLAlchemy](https://www.sqlalchemy.org/) driver you want to communicate with the database, along with any system dependencies.
-
-
-## Configuration
-
-The config is simply a python source file with the following fields:
-
-- `debug`: optional (default=False), right now it only makes SQLAlchemy print every query
-- `database`: required, the database connection string passed to SQLAlchemy
-- `base_path`: required, the base path in which to store the files
-- `files_slot_size`: required, the maximum number of files that should be placed in a single folder
-- `loglevel`: optional (default=logging.WARNING), the log level for the file logger
-- `logto`: optional (default=None), the file to write the logs to
-
-An example can be found in [config.conf](./config.conf).
+- thumbnail generation
+- plugin refactor
+    - stop interacting with database/models directly
+    - don't download thumbnails
+    - generate thumbnails as file is added to the database (if a thumbnailer is available)
+- full text search
 
 
 ## File Storage
