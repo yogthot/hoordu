@@ -16,7 +16,8 @@ from hoordu.forms import *
 from hoordu.plugins.helpers import parse_href
 
 POST_FORMAT = 'https://nijie.info/view.php?id={post_id}'
-POST_URL = ['nijie.info/view.php']
+POPUP_FORMAT = 'https://nijie.info/view_popup.php?id={post_id}'
+POST_URL = ['nijie.info/view.php', 'www.nijie.info/view.php']
 USER_INFO_URL = 'https://nijie.info/members.php'
 USER_ILLUST_URL = 'https://nijie.info/members_illust.php'
 USER_URL = [
@@ -214,8 +215,8 @@ class Nijie(SimplePlugin):
         # TODO need a way to detect if the cookie works or not, no error code is returned
         title = post.select('.illust_title')[0].text
         
-        files = post.select("#gallery .mozamoza")
-        user_id = files[0]['user_id']
+        post_files = post.select("#gallery .mozamoza")
+        user_id = post_files[0]['user_id']
         
         user_name = list(post.select("#pro .name")[0].children)[2]
         
@@ -269,6 +270,15 @@ class Nijie(SimplePlugin):
             await remote_post.add_related_url(url)
         
         # files
+        popup_url = POPUP_FORMAT.format(post_id=id)
+        async with self.http.get(popup_url) as response:
+            response.raise_for_status()
+            popup = BeautifulSoup(await response.text(), 'html.parser')
+        
+        files = popup.select('#img_window a > img')
+        if len(files) != len(post_files):
+            raise APIError(f'inconsistent files, please review the scraper ({len(files)}, {len(post_files)})')
+        
         available = set(range(len(files)))
         present = set(file.remote_order for file in await remote_post.awaitable_attrs.files)
         
@@ -280,7 +290,7 @@ class Nijie(SimplePlugin):
         for file in await remote_post.awaitable_attrs.files:
             f = files[file.remote_order]
             
-            orig_url = parse_href(page_url, f['src'].replace('__rs_l120x120/', ''))
+            orig_url = parse_href(page_url, f['src'])
             thumb_url = orig_url.replace('/nijie/', '/__rs_l120x120/nijie/')
             
             need_orig = not file.present and not preview
