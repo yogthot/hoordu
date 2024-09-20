@@ -36,10 +36,10 @@ class Label(FormEntry):
 
 class Input(FormEntry):
     def __init__(self,
-        label:str,
-        validators:Optional[list[Validator]] = None,
-        identifier:str = None,
-        default:Optional[str] = None
+        label: str,
+        validators: Optional[list[Validator]] = None,
+        identifier: str = None,
+        default: Optional[str] = None
     ):
         super().__init__(identifier)
 

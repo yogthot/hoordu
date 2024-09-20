@@ -8,16 +8,19 @@ import importlib.util
 import importlib.machinery
 
 class GenericEncoder(json.JSONEncoder):
-    def default(self, obj):
-        if isinstance(obj, set):
-            return list(obj)
+    def default(self, o):
+        if isinstance(o, set):
+            return list(o)
         
-        return super().default(obj)
+        return super().default(o)
 
 class Dynamic(dict):
     def __getattr__(self, name: str) -> Any:
         if name in self:
-            return self[name]
+            val = self[name]
+            if isinstance(val, dict):
+                val = Dynamic(val)
+            return val
         else:
             raise AttributeError
     
@@ -55,12 +58,12 @@ class Dynamic(dict):
     @classmethod
     def from_module(cls, filename: str | os.PathLike) -> 'Dynamic':
         module_name = '_hoordu_config.' + Path(filename).name.split('.')[0]
-        module = importlib.machinery.SourceFileLoader(module_name, filename).load_module()
+        module = importlib.machinery.SourceFileLoader(module_name, str(filename)).load_module()
         
         return cls((k, getattr(module, k)) for k in dir(module) if not k.startswith('_'))
     
     @classmethod
-    def from_json(cls, json_string: str) -> Union['Dynamic', list['Dynamic'], Any]:
+    def from_json(cls, json_string: str | bytes | None) -> Union['Dynamic', list['Dynamic'], Any]:
         if json_string is None:
             return cls()
         

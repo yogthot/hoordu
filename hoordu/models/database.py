@@ -1,10 +1,10 @@
 from datetime import datetime
 from enum import Enum, IntFlag, auto
 import json
-from typing import Any
+from typing import Any, Optional
 
 from sqlalchemy import Table, Column, Integer, String, Text, LargeBinary, DateTime, Numeric, ForeignKey, Index, func, inspect, select, insert
-from sqlalchemy.orm import relationship, ColumnProperty, RelationshipProperty, DeclarativeBase
+from sqlalchemy.orm import relationship, ColumnProperty, RelationshipProperty, DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.orm.attributes import InstrumentedAttribute
 from sqlalchemy.ext.asyncio import async_object_session, AsyncAttrs
 from sqlalchemy.ext.compiler import compiles
@@ -100,15 +100,15 @@ class TagFlags(IntFlag):
 class Tag(Base):
     __tablename__ = 'tag'
     
-    id = Column(Integer, primary_key=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
     
-    category = Column(ChoiceType(TagCategory, impl=Integer()), nullable=False)
-    tag = Column(String(length=255, collation='NOCASE'), nullable=False)
+    category: Mapped[TagCategory] = mapped_column(ChoiceType(TagCategory, impl=Integer()), nullable=False)
+    tag: Mapped[str] = mapped_column(String(length=255, collation='NOCASE'), nullable=False)
     
-    flags = Column(Integer, default=TagFlags.none, nullable=False)
+    flags: Mapped[TagFlags] = mapped_column(Integer, default=TagFlags.none, nullable=False)
     
-    created_time = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
-    updated_time = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    updated_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     
     # flags
     favorite = FlagProperty('flags', TagFlags.favorite)
@@ -140,19 +140,19 @@ class PostType(Enum):
 class Post(Base, MetadataHelper):
     __tablename__ = 'post'
     
-    id = Column(Integer, primary_key=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
     
-    title = Column(Text(collation='NOCASE'))
-    comment = Column(Text(collation='NOCASE'))
+    title: Mapped[Optional[str]] = mapped_column(Text(collation='NOCASE'))
+    comment: Mapped[Optional[str]] = mapped_column(Text(collation='NOCASE'))
     
-    type = Column(ChoiceType(PostType, impl=Integer()), nullable=False)
-    flags = Column(Integer, default=PostFlags.none, nullable=False)
+    type: Mapped[PostType] = mapped_column(ChoiceType(PostType, impl=Integer()), nullable=False)
+    flags: Mapped[int] = mapped_column(Integer, default=PostFlags.none, nullable=False)
     
-    metadata_ = Column('metadata', Text)
-    post_time = Column(DateTime(timezone=True))
+    metadata_: Mapped[Optional[str]] = mapped_column('metadata', Text)
+    post_time: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     
-    created_time = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
-    updated_time = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    updated_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     
     # references
     tags = relationship('Tag', secondary=post_tag)
@@ -172,35 +172,35 @@ class Post(Base, MetadataHelper):
 class Source(Base, MetadataHelper):
     __tablename__ = 'source'
     
-    id = Column(Integer, primary_key=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
     
-    name = Column(String(length=255, collation='NOCASE'), nullable=False, index=True, unique=True)
+    name: Mapped[str] = mapped_column(String(length=255, collation='NOCASE'), nullable=False, index=True, unique=True)
     # rate limits, etc
-    config = Column(Text)
-    preferred_plugin_id = Column(Integer, ForeignKey('plugin.id', ondelete='SET NULL'), nullable=True)
+    config: Mapped[Optional[str]] = mapped_column(Text)
+    preferred_plugin_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey('plugin.id', ondelete='SET NULL'), nullable=True)
     
-    metadata_ = Column('metadata', Text)
+    metadata_: Mapped[Optional[str]] = mapped_column('metadata', Text)
     
-    created_time = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
-    updated_time = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    updated_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     
     # references
-    subscriptions = relationship('Subscription', back_populates='source')
-    preferred_plugin = relationship('Plugin', foreign_keys=[preferred_plugin_id])
+    subscriptions: Mapped[list['Subscription']] = relationship('Subscription', back_populates='source')
+    preferred_plugin: Mapped['Plugin'] = relationship('Plugin', foreign_keys=[preferred_plugin_id])
 
 class Plugin(Base):
     __tablename__ = 'plugin'
     
-    id = Column(Integer, primary_key=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
     
-    source_id = Column(Integer, ForeignKey('source.id'), nullable=False)
+    source_id: Mapped[int] = mapped_column(Integer, ForeignKey('source.id'), nullable=False)
     
-    name = Column(String(length=255, collation='NOCASE'), nullable=False, index=True, unique=True)
-    version = Column(Integer, nullable=False)
-    config = Column(Text)
+    name: Mapped[str] = mapped_column(String(length=255, collation='NOCASE'), nullable=False, index=True, unique=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    config: Mapped[Optional[str]] = mapped_column(Text)
     
     # references
-    source = relationship('Source', foreign_keys=[source_id])
+    source: Mapped[Source] = relationship('Source', foreign_keys=[source_id])
 
 remote_post_tag = Table('remote_post_tag', Base.metadata,
     Column('post_id', Integer, ForeignKey('remote_post.id', ondelete='CASCADE'), nullable=False, index=True),
@@ -210,23 +210,23 @@ remote_post_tag = Table('remote_post_tag', Base.metadata,
 class RemoteTag(Base, MetadataHelper):
     __tablename__ = 'remote_tag'
     
-    id = Column(Integer, primary_key=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
     
-    source_id = Column(Integer, ForeignKey('source.id', ondelete='CASCADE'), nullable=False)
+    source_id: Mapped[int] = mapped_column(Integer, ForeignKey('source.id'), nullable=False)
     
-    category = Column(ChoiceType(TagCategory, impl=Integer()), nullable=False)
-    tag = Column(String(length=255, collation='NOCASE'), nullable=False)
+    category: Mapped[TagCategory] = mapped_column(ChoiceType(TagCategory, impl=Integer()), nullable=False)
+    tag: Mapped[str] = mapped_column(String(length=255, collation='NOCASE'), nullable=False)
     
-    metadata_ = Column('metadata', Text)
+    metadata_: Mapped[Optional[str]] = mapped_column('metadata', Text)
     
-    flags = Column(Integer, default=TagFlags.none, nullable=False)
+    flags: Mapped[TagFlags] = mapped_column(Integer, default=TagFlags.none, nullable=False)
     
-    created_time = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
-    updated_time = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    updated_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     
     # references
-    source = relationship('Source')
-    translation = relationship('TagTranslation', back_populates='remote_tag')
+    source: Mapped[Source] = relationship('Source')
+    translation: Mapped['Tag'] = relationship('TagTranslation', back_populates='remote_tag')
     
     # flags
     favorite = FlagProperty('flags', TagFlags.favorite)
@@ -246,31 +246,31 @@ class RemoteTag(Base, MetadataHelper):
 class RemotePost(Base, MetadataHelper):
     __tablename__ = 'remote_post'
     
-    id = Column(Integer, primary_key=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
     
-    source_id = Column(Integer, ForeignKey('source.id', ondelete='CASCADE'), nullable=False)
+    source_id: Mapped[int] = mapped_column(Integer, ForeignKey('source.id'), nullable=False)
     
     # the minimum identifier for the post
-    original_id = Column(Text, nullable=True)
-    url = Column(Text)
+    original_id: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    url: Mapped[Optional[str]] = mapped_column(Text)
     
-    title = Column(Text(collation='NOCASE'))
-    comment = Column(Text(collation='NOCASE'))
+    title: Mapped[Optional[str]] = mapped_column(Text(collation='NOCASE'))
+    comment: Mapped[Optional[str]] = mapped_column(Text(collation='NOCASE'))
     
-    type = Column(ChoiceType(PostType, impl=Integer()), nullable=False)
-    flags = Column(Integer, default=PostFlags.none, nullable=False)
+    type: Mapped[PostType] = mapped_column(ChoiceType(PostType, impl=Integer()), nullable=False)
+    flags: Mapped[int] = mapped_column(Integer, default=PostFlags.none, nullable=False)
     
-    metadata_ = Column('metadata', Text)
-    post_time = Column(DateTime(timezone=True))
+    metadata_: Mapped[Optional[str]] = mapped_column('metadata', Text)
+    post_time: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     
-    created_time = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
-    updated_time = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    updated_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     
     # references
-    source = relationship('Source')
-    tags = relationship('RemoteTag', secondary=remote_post_tag)
-    files = relationship('File', back_populates='remote')
-    related = relationship('Related', back_populates='related_to', foreign_keys='[Related.related_to_id]')
+    source: Mapped[Source] = relationship('Source')
+    tags: Mapped[list[RemoteTag]] = relationship('RemoteTag', secondary=remote_post_tag)
+    files: Mapped[list['File']] = relationship('File', back_populates='remote')
+    related: Mapped[list['Related']] = relationship('Related', back_populates='related_to', foreign_keys='[Related.related_to_id]')
     
     # flags
     favorite = FlagProperty('flags', PostFlags.favorite)
@@ -327,31 +327,31 @@ class FileFlags(IntFlag):
 class File(Base, MetadataHelper):
     __tablename__ = 'file'
     
-    id = Column(Integer, primary_key=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
     
-    local_id = Column(Integer, ForeignKey('post.id', ondelete='SET NULL'))
-    remote_id = Column(Integer, ForeignKey('remote_post.id', ondelete='SET NULL'))
+    local_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey('post.id', ondelete='SET NULL'))
+    remote_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey('remote_post.id', ondelete='SET NULL'))
     
-    local_order = Column(Integer, default=0)
-    remote_order = Column(Integer, default=0)
+    local_order: Mapped[Optional[int]] = mapped_column(Integer, default=0)
+    remote_order: Mapped[Optional[int]] = mapped_column(Integer, default=0)
     
     # hash is md5 for compatibility
-    hash = Column(LargeBinary(length=16), index=True)
-    filename = Column(Text)
-    mime = Column(String(length=255, collation='NOCASE'))
-    ext = Column(String(length=20, collation='NOCASE'))
-    thumb_ext = Column(String(length=20, collation='NOCASE'))
+    hash: Mapped[Optional[bytes]] = mapped_column(LargeBinary(length=16), index=True)
+    filename: Mapped[Optional[str]] = mapped_column(Text)
+    mime: Mapped[Optional[str]] = mapped_column(String(length=255, collation='NOCASE'))
+    ext: Mapped[Optional[str]] = mapped_column(String(length=20, collation='NOCASE'))
+    thumb_ext: Mapped[Optional[str]] = mapped_column(String(length=20, collation='NOCASE'))
     
-    metadata_ = Column('metadata', Text)
+    metadata_: Mapped[Optional[str]] = mapped_column('metadata', Text)
     
-    flags = Column(Integer, default=FileFlags.none, nullable=False)
+    flags: Mapped[FileFlags] = mapped_column(Integer, default=FileFlags.none, nullable=False)
     
-    created_time = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
-    updated_time = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    updated_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     
     # references
-    local = relationship('Post', back_populates='files')
-    remote = relationship('RemotePost', back_populates='files')
+    local: Mapped[Optional[Post]] = relationship('Post', back_populates='files')
+    remote: Mapped[Optional[RemotePost]] = relationship('RemotePost', back_populates='files')
     
     # flags
     favorite = FlagProperty('flags', FileFlags.favorite)
@@ -369,14 +369,14 @@ class File(Base, MetadataHelper):
 
 class FeedEntry(Base):
     __tablename__ = 'feed'
-    subscription_id = Column(Integer, ForeignKey('subscription.id', ondelete='CASCADE'), primary_key=True)
-    remote_post_id = Column(Integer, ForeignKey('remote_post.id', ondelete='CASCADE'), primary_key=True)
+    subscription_id: Mapped[int] = mapped_column(Integer, ForeignKey('subscription.id', ondelete='CASCADE'), primary_key=True)
+    remote_post_id: Mapped[int] = mapped_column(Integer, ForeignKey('remote_post.id', ondelete='CASCADE'), primary_key=True)
     
-    sort_index = Column(Numeric, nullable=False, default=0)
+    sort_index: Mapped[int] = mapped_column(Numeric, nullable=False, default=0)
     
     # references
-    post = relationship('RemotePost')
-    subscription = relationship('Subscription', back_populates='feed')
+    post: Mapped[RemotePost] = relationship('RemotePost')
+    subscription: Mapped['Subscription'] = relationship('Subscription', back_populates='feed')
 
 
 class SubscriptionFlags(IntFlag):
@@ -386,27 +386,27 @@ class SubscriptionFlags(IntFlag):
 class Subscription(Base):
     __tablename__ = 'subscription'
     
-    id = Column(Integer, primary_key=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
     
-    source_id = Column(Integer, ForeignKey('source.id', ondelete='CASCADE'), nullable=False)
-    plugin_id = Column(Integer, ForeignKey('plugin.id', ondelete='CASCADE'), nullable=True)
+    source_id: Mapped[int] = mapped_column(Integer, ForeignKey('source.id'), nullable=False)
+    plugin_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey('plugin.id', ondelete='SET NULL'), nullable=True)
     
-    repr = Column(Text, nullable=True)
-    name = Column(Text, nullable=False)
+    repr: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
     
-    options = Column(Text)
-    state = Column(Text)
-    metadata_ = Column('metadata', Text)
+    options: Mapped[Optional[str]] = mapped_column(Text)
+    state: Mapped[Optional[str]] = mapped_column(Text)
+    metadata_: Mapped[Optional[str]] = mapped_column('metadata', Text)
     
-    flags = Column(Integer, default=SubscriptionFlags.none, nullable=False)
+    flags: Mapped[SubscriptionFlags] = mapped_column(Integer, default=SubscriptionFlags.none, nullable=False)
     
-    created_time = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
-    updated_time = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    updated_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     
     # references
-    source = relationship('Source', back_populates='subscriptions')
-    plugin = relationship('Plugin')
-    feed = relationship('FeedEntry', back_populates='subscription')
+    source: Mapped[Source] = relationship('Source', back_populates='subscriptions')
+    plugin: Mapped[Optional[Plugin]] = relationship('Plugin')
+    feed: Mapped[list[FeedEntry]] = relationship('FeedEntry', back_populates='subscription')
     
     # flags
     enabled = FlagProperty('flags', SubscriptionFlags.enabled)
@@ -452,30 +452,30 @@ class Subscription(Base):
 class TagTranslation(Base):
     __tablename__ = 'tag_translation'
     
-    id = Column(Integer, ForeignKey('remote_tag.id', ondelete='CASCADE'), primary_key=True)
+    id: Mapped[int] = mapped_column(Integer, ForeignKey('remote_tag.id', ondelete='CASCADE'), primary_key=True)
     # null local_tag_id -> ignore remote tag
-    local_tag_id = Column(Integer, ForeignKey('tag.id', ondelete='CASCADE'))
+    local_tag_id: Mapped[int] = mapped_column(Integer, ForeignKey('tag.id', ondelete='CASCADE'))
     
-    created_time = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
-    updated_time = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    updated_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     
     # references
-    remote_tag = relationship('RemoteTag', back_populates='translation')
-    tag = relationship('Tag')
+    remote_tag: Mapped[RemoteTag] = relationship('RemoteTag', back_populates='translation')
+    tag: Mapped[Tag] = relationship('Tag')
 
 class Related(Base):
     __tablename__ = 'related'
     
-    id = Column(Integer, primary_key=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
     # the post this url is related to
-    related_to_id = Column(Integer, ForeignKey('remote_post.id', ondelete='CASCADE'))
+    related_to_id: Mapped[int] = mapped_column(Integer, ForeignKey('remote_post.id', ondelete='CASCADE'))
     
     # the post the url corresponds to, in case it was downloaded
-    remote_id = Column(Integer, ForeignKey('remote_post.id', ondelete='SET NULL'))
+    remote_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey('remote_post.id', ondelete='SET NULL'))
     
-    url = Column(Text)
+    url: Mapped[Optional[str]] = mapped_column(Text)
     
-    related_to = relationship('RemotePost', back_populates='related', foreign_keys=[related_to_id])
-    remote = relationship('RemotePost', foreign_keys=[remote_id])
+    related_to: Mapped[RemotePost] = relationship('RemotePost', back_populates='related', foreign_keys=[related_to_id])
+    remote: Mapped[Optional[RemotePost]] = relationship('RemotePost', foreign_keys=[remote_id])
 
 

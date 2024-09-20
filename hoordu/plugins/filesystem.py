@@ -3,8 +3,9 @@ from . import *
 import pathlib
 from datetime import datetime
 from natsort import natsorted
+from typing import Optional, Any, Iterable
 
-def _ordered_walk(path: pathlib.Path):
+def _ordered_walk(path: pathlib.Path) -> Iterable[pathlib.Path]:
     for p in natsorted(path.iterdir(), key=lambda x: (not x.is_file(), x.name.lower())):
         yield p
         
@@ -12,63 +13,38 @@ def _ordered_walk(path: pathlib.Path):
             yield from _ordered_walk(p)
         
 
-class Filesystem(SimplePlugin):
+class Filesystem(PluginBase):
     id = 'filesystem'
-    name = 'filesystem'
-    version = 1
-    
-    iterator = None
+    source = 'filesystem'
     
     @classmethod
-    async def setup(cls, session, parameters=None):
-        return True, None
-    
-    @classmethod
-    async def parse_url(cls, url):
+    async def parse_url(cls, url: str):
         if url.startswith('/'):
             return url
 
-    async def download(self, url=None, remote_post=None, preview=False):
-        if remote_post is not None:
-            return remote_post
-        
-        path = pathlib.Path(url).resolve()
+    async def download(self, post_id: str, post_data: Any=None):
+        path = pathlib.Path(post_id).resolve()
         create_time = datetime.fromtimestamp(path.stat().st_ctime)
         
-        remote_post = RemotePost(
-            source=self.source,
-            original_id=None,
+        post = PostDetails(
             url=f'file://{path}',
-            type=PostType.set,
             post_time=create_time
         )
-        self.session.add(remote_post)
         
         if path.is_file():
             filename = path.name
+            post.files.append(FileDetails(order=0, url=f'file://${path}', filename=filename))
+            return post
             
-            file = File(remote=remote_post, remote_order=0, filename=filename)
-            self.session.add(file)
-            await self.session.flush()
-            
-            await self.session.import_file(file, orig=str(path), move=False)
-            
-            return remote_post
-        
         elif path.is_dir():
             order = 0
             for p in _ordered_walk(path):
                 if p.is_file():
                     filename = str(p.relative_to(path))
-                    
-                    file = File(remote=remote_post, remote_order=order, filename=filename)
-                    self.session.add(file)
-                    await self.session.flush()
-                    
-                    await self.session.import_file(file, orig=str(p), move=False)
+                    post.files.append(FileDetails(order=order, url=f'file://${p}', filename=filename))
                     order += 1
             
-            return remote_post
+            return post
             
         else:
             raise APIError('unsupported')

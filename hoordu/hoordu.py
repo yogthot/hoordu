@@ -1,9 +1,13 @@
 from typing import Type
 
 from . import models
+from .models import *
 from .config import *
+from .dynamic import Dynamic
 from .session import HoorduSession
 from .plugins import *
+from .forms import *
+from .logging import *
 from .plugins.filesystem import Filesystem
 from . import _version
 
@@ -11,6 +15,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 import packaging.version
+from typing import Optional
 
 import logging
 
@@ -91,28 +96,20 @@ class hoordu:
             thumbpath = '{}/{}/{}'.format(self.thumbspath, file_bucket, file.id)
         
         return filepath, thumbpath
-
-    def _is_plugin_supported(self, version: str) -> bool:
-        version = packaging.version.parse(version)
-        # same major, greater or equal to current
-        return version.major == self.version.major and self.version >= version
     
     async def _setup_plugin(self,
         Plugin_cls: Type[PluginBase],
-        parameters: Dynamic = None
+        parameters: Optional[Dynamic] = None
     ) -> tuple[bool, Form | None]:
-        if not self._is_plugin_supported(Plugin_cls.required_hoordu):
-            raise ValueError(f'plugin {Plugin_cls.id} is unsupported')
-        
         async with self._session as session:
             # create source
             source = await session.select(Source) \
-                    .where(Source.name == Plugin_cls.name) \
+                    .where(Source.name == Plugin_cls.source) \
                     .one_or_none()
             
             source_exists = source is not None
             if not source_exists:
-                source = Source(name=Plugin_cls.name)
+                source = Source(name=Plugin_cls.source)
                 session.add(source)
                 await session.flush()
             
@@ -132,8 +129,24 @@ class hoordu:
                 session.add(source)
                 await session.flush()
             
-            await Plugin_cls.update(session)
-            success, form = await Plugin_cls.setup(session, parameters=parameters)
+            config: Dynamic = Dynamic.from_json(plugin.config)
+            
+            if parameters is not None:
+                config.update(parameters)
+            
+            success = False
+            form = Plugin_cls.config_form()
+            if form is None:
+                success = True
+                
+            else:
+                form.fill(config)
+                success = form.validate()
+                
+                if success:
+                    plugin.config = config.to_json()
+                    session.add(plugin)
+            
             await session.commit()
         
             if success:
@@ -144,11 +157,11 @@ class hoordu:
             
             return success, form
     
-    async def parse_url(self, url: str) -> list[tuple[Type[SimplePlugin], str | Dynamic]]:
+    async def parse_url(self, url: str) -> list[tuple[Type[PluginBase], str | Dynamic]]:
         plugins = []
         
         for identifier, Plugin_cls in self._plugins.items():
-            if issubclass(Plugin_cls, SimplePlugin):
+            if issubclass(Plugin_cls, PluginBase):
                 options = await Plugin_cls.parse_url(url)
                 if options is not None:
                     plugins.append((Plugin_cls, options))
@@ -156,15 +169,22 @@ class hoordu:
         return plugins
     
     async def setup_plugin(self,
-        identifier: str | Type[PluginBase],
+        plugin_id: str | Type[PluginBase],
         parameters: Optional[Dynamic] = None
     ) -> tuple[bool, Form | None]:
+        identifier: str
+        if isinstance(plugin_id, str):
+            identifier = plugin_id
+        else:
+            identifier = plugin_id.id
+        
         Plugin_cls = self._get_plugin(identifier)
         if Plugin_cls is not None:
             return await self._setup_plugin(Plugin_cls, parameters)
         
         # check for new plugins
         ctors, errors = self.config.load_plugins()
+        print(ctors, errors)
         self._plugins.update(ctors)
         
         Plugin_cls = self._get_plugin(identifier)

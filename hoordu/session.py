@@ -1,10 +1,10 @@
 from collections.abc import Callable, Awaitable
-from typing import Type
+from typing import Coroutine, Type
 import contextlib
 import pathlib
 import shutil
 import os
-import stat
+from typing import Optional
 
 from sqlalchemy import select
 
@@ -13,25 +13,21 @@ from .models import *
 from .models.sql import SqlStatement
 from .util import *
 from .plugins import *
-from .http.requests import DefaultRequestManager, Response
+from .plugins.wrapper import PluginWrapper
 
 
 class HoorduSession:
     def __init__(self, hoordu):
-        self.hoordu: hoordu = hoordu
+        self.hoordu = hoordu
         self.raw = hoordu._sessionmaker()
         self.priority = hoordu._sessionmaker()
-        self._plugins: dict[str, PluginBase] = {}
-        
-        self.requests: DefaultRequestManager = DefaultRequestManager()
-        self.requests.headers['User-Agent'] = self.hoordu.useragent
+        self._plugins: dict[str, PluginWrapper] = {}
         
         self._callbacks: list[tuple[Callable[['HoorduSession', bool], Awaitable], bool, bool]] = []
-        self._stack: contextlib.AsyncExitStack | None = None
+        self._stack: contextlib.AsyncExitStack = contextlib.AsyncExitStack()
     
     async def __aenter__(self):
         async with contextlib.AsyncExitStack() as stack:
-            await stack.enter_async_context(self.requests)
             await stack.enter_async_context(self.raw)
             await stack.enter_async_context(self.priority)
             self._stack = stack.pop_all()
@@ -39,7 +35,7 @@ class HoorduSession:
     
     async def __aexit__(self, exc_type, exc, tb):
         try:
-            await self.priority.commit()
+            #await self.priority.commit()
             
             if exc is None:
                 await self.commit()
@@ -49,24 +45,26 @@ class HoorduSession:
         
         finally:
             await self._stack.__aexit__(exc_type, exc, tb)
-            self._stack = None
+            self._stack = contextlib.AsyncExitStack()
         
         return False
     
-    async def plugin(self, plugin_id: str | Type[PluginBase]) -> PluginBase:
-        if not isinstance(plugin_id, str) and issubclass(plugin_id, PluginBase):
-            # when passing a plugin class, Plugin_cls is that class and plugin_id is its id
-            plugin_id = plugin_id.id
+    async def plugin(self, plugin_id: str | Type[PluginBase]) -> PluginWrapper:
+        plugin_name: str
+        if isinstance(plugin_id, str):
+            plugin_name = plugin_id
+        else:
+            plugin_name = plugin_id.id
         
-        plugin = self._plugins.get(plugin_id)
+        plugin = self._plugins.get(plugin_name)
         if plugin is not None:
             return plugin
         
         # load plugin if it wasn't loaded before
         Plugin = await self.hoordu.load_plugin(plugin_id)
         
-        plugin = await self._stack.enter_async_context(Plugin(self))
-        self._plugins[plugin_id] = plugin
+        plugin = await self._stack.enter_async_context(PluginWrapper(self, Plugin))
+        self._plugins[plugin_name] = plugin
         return plugin
     
     def callback(self,
@@ -136,20 +134,13 @@ class HoorduSession:
         return SqlStatement(self.raw, select(*args, **kwargs))
     
     
-    async def download(self, *args, **kwargs) -> tuple[str, Response]:
-        return await self.requests.download(*args, **kwargs)
-    
-    async def request(self, *args, **kwargs) -> Response:
-        return await self.requests.request(*args, **kwargs)
-    
-    
     async def import_file(self,
         file: File,
-        orig: str = None,
-        thumb: str = None,
+        orig: Optional[str] = None,
+        thumb: Optional[str] = None,
         move: bool = False
     ) -> None:
-        mvfun = wrap_async(shutil.move if move else shutil.copy)
+        mvfun: Callable[[str, str], Awaitable[None]] = wrap_async(shutil.move if move else shutil.copy)
         
         if orig is not None:
             file.hash = await md5(orig)
