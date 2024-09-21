@@ -3,6 +3,7 @@ import dateutil.parser
 
 from hoordu.dynamic import Dynamic
 from hoordu.plugins import *
+from hoordu.models.common import *
 from hoordu.forms import *
 
 
@@ -67,9 +68,6 @@ class Misskey(PluginBase):
         
         return None
     
-    async def setup(self):
-        return True
-    
     def _check_renote(self, note):
         renote = note.get('renote')
         if renote is not None and note.text is None and note.cw is None and len(note.files) == 0:
@@ -77,7 +75,7 @@ class Misskey(PluginBase):
         
         return note
     
-    async def download(self, post_id, post_data):
+    async def download(self, post_id, post_data=None):
         request = {
             'noteId': post_id,
             'i': self.config.token,

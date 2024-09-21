@@ -11,12 +11,11 @@ from sqlalchemy.ext.compiler import compiles
 from sqlalchemy_fulltext import FullText
 from sqlalchemy_utils import ChoiceType
 
+from .common import *
+
 __all__ = [
-    'FlagProperty',
-    'TagCategory',
     'TagFlags',
     'PostFlags',
-    'PostType',
     'FileFlags',
     'SubscriptionFlags',
     
@@ -84,15 +83,6 @@ post_tag = Table('post_tag', Base.metadata,
     Column('tag_id', Integer, ForeignKey('tag.id', ondelete='CASCADE'), nullable=False)
 )
 
-class TagCategory(Enum):
-    general = 1
-    group = 2
-    artist = 3
-    copyright = 4
-    character = 5
-    # used for informational tags or personal reminders
-    meta = 6
-
 class TagFlags(IntFlag):
     none = 0
     favorite = auto()
@@ -130,12 +120,6 @@ class PostFlags(IntFlag):
     favorite = auto()
     hidden = auto()
     removed = auto() # if the post was deleted in the remote host
-
-class PostType(Enum):
-    set = 1 # bundle of unrelated files (or just a single file)
-    collection = 2 # the files are related in some way
-    blog = 3 # text with files in between (comment is formatted as json)
-    # more types can be added as needed
 
 class Post(Base, MetadataHelper):
     __tablename__ = 'post'
@@ -429,6 +413,9 @@ class Subscription(Base):
                 raise ValueError('sort_index cannot be None')
         
         session = async_object_session(self)
+        if session is None:
+            raise ValueError('SQLAlchemy session could not be found')
+        
         await session.flush()
         
         exists = await session.execute(select(FeedEntry) \

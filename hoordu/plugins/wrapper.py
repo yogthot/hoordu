@@ -30,12 +30,11 @@ __all__ = [
 class PluginWrapper:
     def __init__(self,
         session,
-        Plugin_cls: Type[PluginBase]
+        plugin_class: Type[PluginBase]
     ):
-        # TODO session type: need to fix imports
         self.session = session
-        self.Plugin_cls: Type[PluginBase] = Plugin_cls
-        self.log: logging.Logger = logging.getLogger(f'hoordu.{self.Plugin_cls.source}')
+        self.plugin_class: Type[PluginBase] = plugin_class
+        self.log: logging.Logger = logging.getLogger(f'hoordu.{self.plugin_class.source}')
         
         self.source: Source
         self.plugin: Plugin
@@ -45,14 +44,14 @@ class PluginWrapper:
     async def get_source(self, session) -> Source:
         stream = await session.stream(
                 select(Source) \
-                    .where(Source.name == self.Plugin_cls.source))
+                    .where(Source.name == self.plugin_class.source))
         row = await stream.one()
         return row.Source
     
     async def get_plugin(self, session) -> Plugin:
         stream = await session.stream(
                 select(Plugin) \
-                    .where(Plugin.name == self.Plugin_cls.id))
+                    .where(Plugin.name == self.plugin_class.id))
         row = await stream.one()
         return row.Plugin
     
@@ -107,7 +106,7 @@ class PluginWrapper:
         self.config = Dynamic.from_json(self.source.config)
         
         self.http = aiohttp.ClientSession()
-        self.instance = self.Plugin_cls()
+        self.instance = self.plugin_class()
         self.instance.log = self.log
         self.instance.config = Dynamic.from_json(self.plugin.config)
         
@@ -120,16 +119,16 @@ class PluginWrapper:
         post_details: PostDetails
     ) -> RemotePost:
         
+        if post_details._omit_id:
+            remote_post.original_id = None
+        
         self.log.info(f'getting post from: {post_details.url}')
         self.log.info(f'creating post: {self.source.name}:{remote_post.original_id}')
         self.log.info(f'local id: {remote_post.id}')
         
-        if post_details.omit_post_id:
-            remote_post.original_id = None
-        
         remote_post.url = post_details.url
         remote_post.comment = post_details.comment
-        remote_post.type = PostType.set
+        remote_post.type = post_details.type or PostType.set
         remote_post.post_time = post_details.post_time
         remote_post.metadata_ = post_details.metadata
         
@@ -179,8 +178,8 @@ class PluginWrapper:
         self.session.add(remote_post)
         return remote_post
     
-    async def parse_url(self, url: str):
-        return await self.Plugin_cls.parse_url(url)
+    async def parse_url(self, url: str) -> str | Dynamic | None:
+        return await self.plugin_class.parse_url(url)
     
     async def download(self, post: RemotePost | str) -> RemotePost:
         if isinstance(post, RemotePost):
@@ -189,6 +188,9 @@ class PluginWrapper:
         else:
             _, remote_post = await self._get_post(post)
             post_id = post
+        
+        if post_id is None:
+            raise ValueError('original id cannot be null when downloading a post')
         
         post_details = await self.instance.download(post_id)
         return await self._convert_post(remote_post, post_details)

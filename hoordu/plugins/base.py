@@ -50,6 +50,7 @@ class FileDetails:
 
 @dataclass
 class PostDetails:
+    type: Optional[PostType] = None
     url: Optional[str] = None
     title: Optional[str] = None
     comment: Optional[str] = None
@@ -63,7 +64,8 @@ class PostDetails:
     is_hidden: bool = False
     is_removed: bool = False
     
-    omit_post_id: bool = False
+    # hack until I find a better way to do this
+    _omit_id: bool = False
 
 
 @dataclass
@@ -99,10 +101,20 @@ class PluginBase:
     def config_form(cls) -> Optional[Form]:
         """
         Returns a form for the configuration of the values by the plugin.
+        The plugin can only be instantiated if the form validates.
         """
         
         return None
-        
+    
+    @classmethod
+    def search_form(cls) -> Optional[Form]:
+        """
+        Returns the form or a list of forms used for searches and subscriptions.
+        (e.g.: user id, a search string, advanced options available on the backend)
+        """
+
+        return None
+    
     @classmethod
     async def parse_url(cls, url: str) -> str | Dynamic | None:
         """
@@ -110,32 +122,9 @@ class PluginBase:
         
         Returns the remote id if the url corresponds to a single post,
         a Dynamic object that can be passed to search if the url
-        corresponds to multiple posts, or None if this plugin can't
-        download or create a search using this url.
+        corresponds to multiple posts, or None otherwise.
         """
         
-        return None
-    
-    async def setup(self) -> bool:
-        """
-        Tries to initialize a plugin from existing configuration or new configuration
-        passed in `parameters`.
-        
-        If the plugin initializes successfully, this should return a tuple of
-        True and the plugin object.
-        Otherwise, it should return a tuple of False and a form for any missing values
-        required (e.g.: oauth tokens).
-        """
-        
-        return True
-    
-    @classmethod
-    def search_form(cls) -> Optional[Form]:
-        """
-        Returns the form or a list of forms used for searches and subscriptions.
-        (e.g.: user id, a search string, or advanced options available on the website)
-        """
-
         return None
     
     @abc.abstractmethod
@@ -144,23 +133,19 @@ class PluginBase:
         post_data: Optional[Any] = None
     ) -> PostDetails:
         """
-        Creates or updates a RemotePost entry along with all the associated Files,
-        and downloads all files and thumbnails that aren't present yet.
+        Fetches a PostDetails object from the backend.
         
-        If remote_post is passed, its original_id will be used and it will be
-        updated in place.
-        
-        If preview is set to True, then only the thumbnails are downloaded.
-        
-        Returns the downloaded RemotePost object.
+        post_data contains any data that may have been yielded during
+        the iteration of a query, but is unused for direct downloads.
         """
         pass
     
     async def probe_query(self, query: Dynamic) -> Optional[SearchDetails]:
         """
         Returns a SearchDetails object with extra details about the search that would
-        be performed by this set of options (e.g.: user timeline).
-        May return None if no specific information is found (e.g.: global searches).
+        be performed by this query.
+        It's advisable to implement this even it only to return the identifier and hint,
+        so creating subscriptions can be automated.
         """
         
         return None
@@ -168,9 +153,16 @@ class PluginBase:
     @abc.abstractmethod
     def iterate_query(self, query: Dynamic, begin_at: Optional[int]=None) -> AsyncIterator[tuple[int, Union[str, None], Any]]:
         """
-        Returns a SearchDetails object with extra details about the search that would
-        be performed by this set of options (e.g.: user timeline).
-        May return None if no specific information is found (e.g.: global searches).
+        Iterates a given query.
+        begin_at will be set to the last returned sort index when attempting to load more
+        posts from the end of the query.
+        If begin_at is None, the iteration should start at the beginning.
+        `yield` throws GeneratorExit when the iteration should stop.
+        
+        The yielded tuple should be:
+        - sort index: a number to help sort posts in a timeline (newer posts should be higher than old posts)
+        - post id: identifier that will be passed to the download method (can be None to update the sort index)
+        - post data: will be passed as is to the download method when downloading this post
         """
         pass
 

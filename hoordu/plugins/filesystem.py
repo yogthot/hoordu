@@ -27,6 +27,7 @@ class Filesystem(PluginBase):
         create_time = datetime.fromtimestamp(path.stat().st_ctime)
         
         post = PostDetails(
+            _omit_id=True,
             url=f'file://{path}',
             post_time=create_time
         )

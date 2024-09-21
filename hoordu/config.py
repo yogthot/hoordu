@@ -17,7 +17,7 @@ __all__ = [
 ]
 
 class HoorduConfig:
-    PLUGIN_FILE_REGEX = re.compile('^(?P<plugin_id>[^\.]+)\.py$', re.IGNORECASE)
+    PLUGIN_FILE_REGEX = re.compile(r'^(?P<plugin_id>[^\.]+)\.py$', re.IGNORECASE)
     
     def __init__(self, home):
         self.home: Path = Path(home)

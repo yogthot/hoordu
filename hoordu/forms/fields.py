@@ -12,7 +12,7 @@ __all__ = [
 ]
 
 class FormEntry:
-    def __init__(self, identifier:str = None):
+    def __init__(self, identifier: str = None):
         self.id = identifier
     
     def clear(self) -> None:

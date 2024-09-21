@@ -2,7 +2,13 @@ from typing import Optional, Iterator
 
 from enum import IntEnum
 
-from ..config import Dynamic
+from ..dynamic import Dynamic
+
+__all__ = [
+    'BlockType',
+    'BlogBlock',
+    'BlogComment',
+]
 
 
 class BlockType(IntEnum):
