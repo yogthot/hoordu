@@ -42,10 +42,8 @@ class Misskey(PluginBase):
             ('user', Input('screen name', [validators.required()]))
         )
     
-    # TODO generalize this with some kinda pattern matching? or a dictionary at the class level?
     @classmethod
     async def parse_url(cls, url):
-        # TODO refactor this one too
         if url.isdigit():
             return url
         
@@ -84,6 +82,7 @@ class Misskey(PluginBase):
         note = post_data
         if note is None:
             resp = await self.http.post('https://misskey.io/api/notes/show', json=request)
+            resp.raise_for_status()
             note = Dynamic.from_json(await resp.text())
         
         note = self._check_renote(note)
@@ -128,6 +127,7 @@ class Misskey(PluginBase):
         }
         
         resp = await self.http.post('https://misskey.io/api/users/show', json=request)
+        resp.raise_for_status()
         user = Dynamic.from_json(await resp.text())
         
         query.user_id = user.id

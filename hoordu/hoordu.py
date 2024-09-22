@@ -148,10 +148,9 @@ class hoordu:
         plugins = []
         
         for identifier, plugin_class in self._plugins.items():
-            if issubclass(plugin_class, PluginBase):
-                options = await plugin_class.parse_url(url)
-                if options is not None:
-                    plugins.append((plugin_class, options))
+            options = await plugin_class.parse_url(url)
+            if options is not None:
+                plugins.append((plugin_class, options))
         
         return plugins
     
@@ -170,12 +169,12 @@ class hoordu:
                 # check if this plugin failed to load
                 exc = errors.get(identifier)
                 if exc is not None:
-                    raise ValueError(f'plugin {identifier} failed to load') from exc
+                    raise ValueError(f'plugin {plugin_id} failed to load') from exc
                 
                 plugin_class = self._plugins.get(identifier)
                 
                 if plugin_class is None:
-                    raise ValueError(f'plugin {identifier} does not exist')
+                    raise ValueError(f'plugin {plugin_id} does not exist')
             
         else:
             plugin_class = identifier
@@ -196,9 +195,15 @@ class hoordu:
         
         success, _ = await self.setup_plugin(identifier)
         if not success:
-            raise ValueError(f'plugin {identifier} needs to be setup before use')
+            raise ValueError(f'plugin {plugin_id} needs to be setup before use')
         
         return plugin
+    
+    async def reload_plugins(self):
+        ctors, errors = self.config.load_plugins()
+        self._plugins.update(ctors)
+        for plugin_class in self._plugins.values():
+            await self._create_plugin(plugin_class)
     
     def session(self) -> HoorduSession:
         return HoorduSession(self)

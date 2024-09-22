@@ -112,6 +112,7 @@ class PluginWrapper:
         
         async with self.http:
             self.instance.http = self.http
+            await self.instance.setup()
             yield self
     
     async def _convert_post(self,
@@ -147,6 +148,7 @@ class PluginWrapper:
             self.session.add(file)
             await self.session.flush()
         
+        # TODO check file_id and encode it in the metadata_, but also handle the cases where that does not exist (use order instead)
         for file in await remote_post.awaitable_attrs.files:
             f = available[file.remote_order]
             
@@ -278,10 +280,10 @@ class PluginWrapper:
             if subscription is not None:
                 state: Dynamic = Dynamic.from_json(subscription.state)
                 
-                if not state.contains('head_id') or (is_head and not exc):
+                if first_id is not None and (not state.contains('head_id') or (is_head and not exc)):
                     state.head_id = first_id
                     
-                if not state.contains('tail_id') or (not is_head and last_id is not None):
+                if last_id is not None and (not state.contains('tail_id') or not is_head):
                     state.tail_id = last_id
                 
                 subscription.state = state.to_json()

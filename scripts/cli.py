@@ -432,6 +432,7 @@ async def main():
         return
     
     hrd = hoordu.hoordu(config)
+    await hrd.reload_plugins()
     
     args = await parse_args(hrd)
     

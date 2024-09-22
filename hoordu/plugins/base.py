@@ -115,6 +115,7 @@ class PluginBase:
 
         return None
     
+    # TODO generalize this with some kinda pattern matching? or a dictionary at the class level?
     @classmethod
     async def parse_url(cls, url: str) -> str | Dynamic | None:
         """
@@ -126,6 +127,13 @@ class PluginBase:
         """
         
         return None
+    
+    async def setup(self) -> None:
+        """
+        Called right after everything is ready to use but before any other method is called.
+        Use this to add headers or cookies to the http client, or do any other initial setup.
+        """
+        pass
     
     @abc.abstractmethod
     async def download(self,
