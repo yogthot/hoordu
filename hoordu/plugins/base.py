@@ -43,9 +43,9 @@ class RateLimitError(APIError):
 @dataclass
 class FileDetails:
     url: str
-    order: int = 0
+    order: Optional[int] = None
     filename: Optional[str] = None
-    file_id: Optional[str] = None
+    identifier: Optional[str] = None
 
 
 @dataclass

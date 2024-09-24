@@ -113,7 +113,7 @@ class Baraag(PluginBase):
             FileDetails(
                 url=f.url,
                 order=i + 1,
-                file_id=f.id
+                identifier=f.id
             )
             for i, f in enumerate(post_data.media_attachments)
         ]

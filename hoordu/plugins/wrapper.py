@@ -140,24 +140,31 @@ class PluginWrapper:
         for url in post_details.related:
             await remote_post.add_related_url(url)
         
-        available = {f.order: f for f in post_details.files}
-        present = set(file.remote_order for file in await remote_post.awaitable_attrs.files)
+        post_files = await remote_post.awaitable_attrs.files
         
-        for order in set(available.keys()) - present:
-            file = File(remote=remote_post, remote_order=order)
-            self.session.add(file)
-            await self.session.flush()
+        by_order = {file.remote_order: file for file in post_files}
+        by_identifier = {file.metadata_: file for file in post_files}
         
-        # TODO check file_id and encode it in the metadata_, but also handle the cases where that does not exist (use order instead)
-        for file in await remote_post.awaitable_attrs.files:
-            f = available[file.remote_order]
+        for i, file_details in enumerate(post_details.files):
+            order = file_details.order if file_details.order is not None else i
+            if file_details.identifier is not None:
+                file = by_identifier.get(file_details.identifier)
+                
+            else:
+                file = by_order.get(file_details.order)
             
-            file.filename = f.filename
+            if file is None:
+                file = File(remote=remote_post, remote_order=order, metadata_=file_details.identifier)
+                self.session.add(file)
+                await self.session.flush()
+            
+            file.filename = file_details.filename
+            
             if not file.present:
                 orig = None
                 is_move = False
                 
-                url = yarl.URL(f.url)
+                url = yarl.URL(file_details.url)
                 match url.scheme:
                     case 'file':
                         self.log.info(f'copying file {file.remote_order}: {url.path}')
@@ -165,10 +172,14 @@ class PluginWrapper:
                         is_move = False
                         
                     case 'http' | 'https':
-                        self.log.info(f'downloading file {file.remote_order}: {f.url}')
-                        async with self.http.get(f.url) as resp:
-                            orig = await save_response(resp, suffix=f.filename)
+                        self.log.info(f'downloading file {file.remote_order}: {url}')
+                        async with self.http.get(file_details.url) as resp:
+                            orig = await save_response(resp, suffix=file_details.filename)
                         is_move = True
+                    
+                    case _:
+                        self.log.warning(f'unknown scheme: {url.scheme}')
+                        raise Exception(f'unable to download file url: {url}')
                 
                 if orig is not None:
                     await self.session.import_file(file, orig=orig, thumb=None, move=is_move)
