@@ -96,14 +96,14 @@ class Baraag(PluginBase):
         
         post.metadata = Dynamic({'user': user}).to_json()
         
-        post.tags.append((TagCategory.artist, user))
+        post.tags.append(TagDetails(TagCategory.artist, user))
         
         if post_data.sensitive or post_data.spoiler_text:
-            post.tags.append((TagCategory.meta, 'nsfw'))
+            post.tags.append(TagDetails(TagCategory.meta, 'nsfw'))
         
         hashtags = post_data.get('tags', [])
         for hashtag in hashtags:
-            post.tags.append((TagCategory.general, hashtag.name))
+            post.tags.append(TagDetails(TagCategory.general, hashtag.name))
         
         quoted = post_data.get('reblog')
         if quoted is not None:

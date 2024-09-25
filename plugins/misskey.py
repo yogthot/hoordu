@@ -95,15 +95,15 @@ class Misskey(PluginBase):
         user = note.user.username if note.user.host is None else f'{note.user.username}@{note.user.host}'
         post.metadata = Dynamic({'user': user}).to_json()
         
-        post.tags.append((TagCategory.artist, user))
+        post.tags.append(TagDetails(TagCategory.artist, user))
         
         has_nsfw_file = any(f.isSensitive for f in note.files)
         if has_nsfw_file or note.cw is not None:
-            post.tags.append((TagCategory.meta, 'nsfw'))
+            post.tags.append(TagDetails(TagCategory.meta, 'nsfw'))
         
         hashtags = note.get('tags', [])
         for hashtag in hashtags:
-            post.tags.append((TagCategory.general, hashtag))
+            post.tags.append(TagDetails(TagCategory.general, hashtag))
         
         quoted = note.get('renote')
         if quoted is not None:
