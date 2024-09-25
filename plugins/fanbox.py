@@ -1,19 +1,16 @@
 #!/usr/bin/env python3
 
 import re
-from datetime import datetime, timedelta, timezone
 import dateutil.parser
 import itertools
-from urllib.parse import urlparse, parse_qs
+import yarl
 
-import aiohttp
 from bs4 import BeautifulSoup
 
-import hoordu
-from hoordu.models import *
+from hoordu.dynamic import Dynamic
 from hoordu.plugins import *
+from hoordu.models.common import *
 from hoordu.forms import *
-from hoordu.plugins.base import TagDetails
 
 CREATOR_URL_REGEXP = re.compile(r'https?:\/\/(?P<creator>[^\.]+)\.fanbox\.cc\/', flags=re.IGNORECASE)
 
@@ -68,7 +65,7 @@ class Fanbox(PluginBase):
         for regexp in CREATOR_REGEXP:
             match = regexp.match(url)
             if match:
-                return hoordu.Dynamic({
+                return Dynamic({
                     'creator': match.group('creator')
                 })
         
@@ -77,7 +74,7 @@ class Fanbox(PluginBase):
     async def download(self, post_id, post_data=None):
         async with self.http.get(f'https://api.fanbox.cc/post.info?postId={post_id}') as response:
             response.raise_for_status()
-            post_data = hoordu.Dynamic.from_json(await response.text()).body
+            post_data = Dynamic.from_json(await response.text()).body
         
         if post_data.isRestricted:
             self.log.warning('inaccessible post %s', post_id)
@@ -93,7 +90,7 @@ class Fanbox(PluginBase):
         post.title = post_data.title
         post.post_time = dateutil.parser.parse(post_data.publishedDatetime)
         
-        metadata = hoordu.Dynamic()
+        metadata = Dynamic()
         if post_data.feeRequired != 0:
             metadata.price = post_data.feeRequired
         post.metadata = metadata.to_json()
@@ -194,7 +191,7 @@ class Fanbox(PluginBase):
                             
                             async with self.http.get(POST_EMBED_INFO_URL.format(related_post_id=related_post_id)) as response:
                                 response.raise_for_status()
-                                related_post_body = hoordu.Dynamic.from_json(await response.text()).body
+                                related_post_body = Dynamic.from_json(await response.text()).body
                             
                             url = POST_FORMAT.format(creator=related_post_body.creatorId, post_id=related_post_id)
                             
@@ -250,7 +247,7 @@ class Fanbox(PluginBase):
                     else:
                         self.log.warning('unknown blog block: %s', str(block.type))
                 
-                post.comment = hoordu.Dynamic({'comment': blog}).to_json()
+                post.comment = Dynamic({'comment': blog}).to_json()
                 post.type = PostType.blog
                 
             elif post_data.type == 'text':
@@ -276,7 +273,7 @@ class Fanbox(PluginBase):
         
         async with self.http.get(f'https://api.fanbox.cc/creator.get?creatorId={creator_id}') as response:
             response.raise_for_status()
-            creator = hoordu.Dynamic.from_json(await response.text()).body
+            creator = Dynamic.from_json(await response.text()).body
         
         query.creator = creator_id
         query.pixiv_id = creator.user.userId
@@ -301,12 +298,12 @@ class Fanbox(PluginBase):
         }
         async with self.http.get('https://api.fanbox.cc/post.paginateCreator', params=page_params) as response:
             response.raise_for_status()
-            pages = hoordu.Dynamic.from_json(await response.text()).body
+            pages = Dynamic.from_json(await response.text()).body
         
         if begin_at is None:
             page_id = 0
         else:
-            page_map = [int(parse_qs(urlparse(page).query)['maxId'][0]) for page in pages]
+            page_map = [int(yarl.URL(page).query['maxId']) for page in pages]
             page_id = next((i for i, p in enumerate(page_map) if p < begin_at), len(page_map))
             page_id = max(page_id - 1, 0)
         
@@ -316,7 +313,7 @@ class Fanbox(PluginBase):
             
             async with self.http.get(pages[page_id]) as response:
                 response.raise_for_status()
-                posts = hoordu.Dynamic.from_json(await response.text()).body
+                posts = Dynamic.from_json(await response.text()).body
             
             for post in posts:
                 sort_index = int(post.id)
