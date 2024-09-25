@@ -133,8 +133,12 @@ class PluginWrapper:
         remote_post.post_time = post_details.post_time
         remote_post.metadata_ = post_details.metadata
         
-        for category, tag in post_details.tags:
-            tag = await self._get_tag(category, tag)
+        for tag_details in post_details.tags:
+            tag = await self._get_tag(tag_details.category, tag_details.tag)
+            if tag_details.metadata is not None:
+                for name, value in tag_details.metadata.items():
+                    if tag.update_metadata(name, value):
+                        self.session.add(tag)
             await remote_post.add_tag(tag)
         
         for url in post_details.related:
@@ -154,7 +158,12 @@ class PluginWrapper:
                 file = by_order.get(file_details.order)
             
             if file is None:
-                file = File(remote=remote_post, remote_order=order, metadata_=file_details.identifier)
+                file = File(
+                    remote=remote_post,
+                    remote_order=order,
+                    filename=file_details.filename,
+                    metadata_=file_details.identifier
+                )
                 self.session.add(file)
                 await self.session.flush()
             
@@ -182,7 +191,7 @@ class PluginWrapper:
                         raise Exception(f'unable to download file url: {url}')
                 
                 if orig is not None:
-                    await self.session.import_file(file, orig=orig, thumb=None, move=is_move)
+                    await self.session.import_file(file, orig=orig, move=is_move)
         
         remote_post.favorite = post_details.is_favorite
         remote_post.hidden = post_details.is_hidden

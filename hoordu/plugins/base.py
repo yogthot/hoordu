@@ -26,6 +26,7 @@ __all__ = [
     'RateLimitError',
     
     'FileDetails',
+    'TagDetails',
     'PostDetails',
     'SearchDetails',
     
@@ -49,6 +50,13 @@ class FileDetails:
 
 
 @dataclass
+class TagDetails:
+    category: TagCategory
+    tag: str
+    metadata: Optional[dict[str, Any]] = None
+
+
+@dataclass
 class PostDetails:
     type: Optional[PostType] = None
     url: Optional[str] = None
@@ -56,7 +64,7 @@ class PostDetails:
     comment: Optional[str] = None
     metadata: Optional[str] = None
     post_time: Optional[datetime] = None
-    tags: list[tuple[TagCategory, str]] = field(default_factory=list)
+    tags: list[TagDetails] = field(default_factory=list)
     related: list[str] = field(default_factory=list)
     files: list[FileDetails] = field(default_factory=list)
     
