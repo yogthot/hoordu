@@ -220,49 +220,42 @@ async def _cli_form(form):
     form.clear()
     
     print(f'== {form.label} ===========')
-    if isinstance(form, OAuthForm):
-        print('Please visit the following url and authorize to continue.')
-        print(form.url)
-        oauth_server = OAuthServer(8941)
-        path, params = await oauth_server.wait_for_request()
-        
-        plugin_id = path[1:]
-        form.fill(params)
-        return
+    #if isinstance(form, OAuthForm):
+    #    print('Please visit the following url and authorize to continue.')
+    #    print(form.url)
+    #    oauth_server = OAuthServer(8941)
+    #    path, params = await oauth_server.wait_for_request()
+    #    
+    #    plugin_id = path[1:]
+    #    form.fill(params)
+    #    return
     
     for entry in form.entries:
-        if isinstance(entry, Section):
-            print(f'-- {entry.label} ----------')
+        if entry.errors:
+            for error in entry.errors:
+                print(f'error: {error}')
+            
+        if isinstance(entry, Label):
+            print(entry.label)
             print()
-            await _cli_form(entry)
-            print('--------------' + '-' * len(entry.label))
-        
+            
+        elif isinstance(entry, PasswordInput):
+            value = getpass('{entry.label}: ')
+            if value: entry.value = value
+            
+        elif isinstance(entry, ChoiceInput):
+            print(f'{entry.label}:')
+            for k, v in entry.choices:
+                print(f'    {k}: {v}')
+            value = input('pick a choice: ')
+            if value: entry.value = value
+            
+        elif isinstance(entry, Input):
+            value = input(f'{entry.label}: ')
+            if value: entry.value = value
+            
         else:
-            if entry.errors:
-                for error in entry.errors:
-                    print(f'error: {error}')
-                
-            if isinstance(entry, Label):
-                print(entry.label)
-                print()
-                
-            elif isinstance(entry, PasswordInput):
-                value = getpass('{entry.label}: ')
-                if value: entry.value = value
-                
-            elif isinstance(entry, ChoiceInput):
-                print(f'{entry.label}:')
-                for k, v in entry.choices:
-                    print(f'    {k}: {v}')
-                value = input('pick a choice: ')
-                if value: entry.value = value
-                
-            elif isinstance(entry, Input):
-                value = input(f'{entry.label}: ')
-                if value: entry.value = value
-                
-            else:
-                print()
+            print()
 
 async def cli_form(form):
     await _cli_form(form)
