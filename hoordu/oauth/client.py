@@ -20,21 +20,20 @@ class OAuthError(Exception):
     pass
 
 
-# TODO could make the session instantiate this so it shares the default requests implementation
 class OAuth:
     def __init__(self, *,
         client_id: str,
         client_secret: str,
-        auth_url: str,
-        token_url: str,
+        auth_endpoint: str,
+        token_endpoint: str,
         redirect_uri: str,
         scopes: str,
         code_challenge_method: Optional[str] = None
     ):
         self._client_id: str = client_id
         self._client_secret: str = client_secret
-        self._auth_url: str = auth_url
-        self._token_url: str = token_url
+        self._auth_endpoint: str = auth_endpoint
+        self._token_endpoint: str = token_endpoint
         self._redirect_uri: str = redirect_uri
         self._scopes: str = scopes
         self._code_challenge_method: str | None = code_challenge_method
@@ -78,7 +77,7 @@ class OAuth:
                 challenge = base64.urlsafe_b64encode(digest).decode('ascii').rstrip('=')
                 args.update(code_challenge=challenge)
         
-        url = f'{self._auth_url}?{urlencode(args, quote_via=quote)}'
+        url = f'{self._auth_endpoint}?{urlencode(args, quote_via=quote)}'
         
         if use_code_verifier:
             return url, state, challenge_code
@@ -119,7 +118,7 @@ class OAuth:
             'Authorization': f'Basic {auth}',
         }
         
-        url = self._token_url
+        url = self._token_endpoint
         data = urlencode(args, quote_via=quote)
         
         async with aiohttp.ClientSession() as client:
