@@ -314,9 +314,6 @@ class Fanbox(PluginBase):
             for post in posts:
                 sort_index = int(post.id)
                 
-                if begin_at is not None and sort_index >= begin_at:
-                    continue
-                
                 yield sort_index, post.id, None
             
             page_id += 1

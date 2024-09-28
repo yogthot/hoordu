@@ -275,6 +275,9 @@ class PluginWrapper:
                 if end_at is not None and sort_index <= end_at:
                     break
                 
+                if begin_at is not None and sort_index >= begin_at:
+                    continue
+                
                 remote_post = None
                 if post_id is not None:
                     exists, remote_post = await self._get_post(post_id)
