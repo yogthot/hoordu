@@ -93,7 +93,7 @@ class Misskey(PluginBase):
         post.post_time = dateutil.parser.isoparse(note.createdAt).replace(tzinfo=None)
         
         user = note.user.username if note.user.host is None else f'{note.user.username}@{note.user.host}'
-        post.metadata = Dynamic({'user': user}).to_json()
+        post.metadata = {'user': user}
         
         post.tags.append(TagDetails(TagCategory.artist, user))
         

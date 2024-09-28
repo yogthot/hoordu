@@ -53,7 +53,7 @@ class FileDetails:
 class TagDetails:
     category: TagCategory
     tag: str
-    metadata: Optional[dict[str, Any]] = None
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -62,7 +62,7 @@ class PostDetails:
     url: Optional[str] = None
     title: Optional[str] = None
     comment: Optional[str] = None
-    metadata: Optional[str] = None
+    metadata: dict[str, Any] = field(default_factory=dict)
     post_time: Optional[datetime] = None
     tags: list[TagDetails] = field(default_factory=list)
     related: list[str] = field(default_factory=list)

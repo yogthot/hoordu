@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 import re
 import dateutil.parser
 import itertools
@@ -90,10 +88,8 @@ class Fanbox(PluginBase):
         post.title = post_data.title
         post.post_time = dateutil.parser.parse(post_data.publishedDatetime)
         
-        metadata = Dynamic()
         if post_data.feeRequired != 0:
-            metadata.price = post_data.feeRequired
-        post.metadata = metadata.to_json()
+            post.metadata['price'] = post_data.feeRequired
         
         if post_data.isLiked is True:
             post.is_favorite = True

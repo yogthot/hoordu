@@ -131,14 +131,15 @@ class PluginWrapper:
         remote_post.comment = post_details.comment
         remote_post.type = post_details.type or PostType.set
         remote_post.post_time = post_details.post_time
-        remote_post.metadata_ = post_details.metadata
+        
+        for name, value in post_details.metadata.items():
+            remote_post.update_metadata(name, value)
         
         for tag_details in post_details.tags:
             tag = await self._get_tag(tag_details.category, tag_details.tag)
-            if tag_details.metadata is not None:
-                for name, value in tag_details.metadata.items():
-                    if tag.update_metadata(name, value):
-                        self.session.add(tag)
+            for name, value in tag_details.metadata.items():
+                if tag.update_metadata(name, value):
+                    self.session.add(tag)
             await remote_post.add_tag(tag)
         
         for url in post_details.related:

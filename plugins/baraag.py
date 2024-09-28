@@ -94,7 +94,7 @@ class Baraag(PluginBase):
         post.comment = text
         post.post_time = post_time = dateutil.parser.isoparse(post_data.created_at).replace(tzinfo=None)
         
-        post.metadata = Dynamic({'user': user}).to_json()
+        post.metadata = {'user': user}
         
         post.tags.append(TagDetails(TagCategory.artist, user))
         
