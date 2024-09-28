@@ -167,7 +167,7 @@ class PluginBase:
         return None
     
     @abc.abstractmethod
-    def iterate_query(self, query: Dynamic, begin_at: Optional[int]=None) -> AsyncIterator[tuple[int, Union[str, None], Any]]:
+    def iterate_query(self, query: Dynamic, state: Optional[dict[str, Any]] = None, begin_at: Optional[int]=None) -> AsyncIterator[tuple[int, Union[str, None], Any]]:
         """
         Iterates a given query.
         begin_at will be set to the last returned sort index when attempting to load more

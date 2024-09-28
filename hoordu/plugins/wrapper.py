@@ -262,53 +262,62 @@ class PluginWrapper:
         
         begin_at = None
         end_at = None
+        custom_state = None
         if subscription is not None:
-            state: Dynamic = Dynamic.from_json(subscription.state)
+            state = Dynamic.from_json(subscription.state)
             if not is_head:
                 begin_at = state.get('tail_id')
             else:
                 end_at = state.get('head_id')
+            
+            custom_state = state.get('custom')
+            if custom_state is None:
+                custom_state = {k: v for k, v in state.items() if k not in ('head_id', 'tail_id')}
         
         exc = False
         try:
-            async for sort_index, post_id, post_data in self.instance.iterate_query(query, begin_at=begin_at):
-                if end_at is not None and sort_index <= end_at:
-                    break
-                
-                if begin_at is not None and sort_index >= begin_at:
-                    continue
-                
-                remote_post = None
-                if post_id is not None:
-                    exists, remote_post = await self._get_post(post_id)
-                    post_details = await self.instance.download(post_id, post_data)
-                    post = await self._convert_post(remote_post, post_details)
+            iterator = self.instance.iterate_query(query, custom_state, begin_at=begin_at)
+            async with contextlib.aclosing(iterator) as it:
+                async for sort_index, post_id, post_data in it:
+                    if end_at is not None and sort_index <= end_at:
+                        break
                     
-                    if subscription is not None:
-                        await subscription.add_post(remote_post, int(sort_index))
-                        await self.session.commit()
-                
-                if is_first:
-                    is_first = False
-                    first_id = sort_index
-                
-                last_id = sort_index
-                
-                if remote_post is not None:
-                    yield remote_post
+                    if begin_at is not None and sort_index >= begin_at:
+                        continue
+                    
+                    remote_post = None
+                    if post_id is not None:
+                        exists, remote_post = await self._get_post(post_id)
+                        post_details = await self.instance.download(post_id, post_data)
+                        post = await self._convert_post(remote_post, post_details)
+                        
+                        if subscription is not None:
+                            await subscription.add_post(remote_post, int(sort_index))
+                            await self.session.commit()
+                    
+                    if is_first:
+                        is_first = False
+                        first_id = sort_index
+                    
+                    last_id = sort_index
+                    
+                    if remote_post is not None:
+                        yield remote_post
             
         except:
             exc = True
             
         finally:
             if subscription is not None:
-                state: Dynamic = Dynamic.from_json(subscription.state)
+                state = Dynamic.from_json(subscription.state)
                 
                 if first_id is not None and (not state.contains('head_id') or (is_head and not exc)):
                     state.head_id = first_id
                     
                 if last_id is not None and (not state.contains('tail_id') or not is_head):
                     state.tail_id = last_id
+                
+                state.custom = custom_state
                 
                 subscription.state = state.to_json()
                 subscription.updated_time = datetime.now(timezone.utc)

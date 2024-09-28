@@ -172,7 +172,7 @@ class Baraag(PluginBase):
         elif method == 'posts':
             return has_files and not is_reblog
     
-    async def iterate_query(self, query, begin_at=None):
+    async def iterate_query(self, query, state=None, begin_at=None):
         if 'user_id' not in query:
             await self.probe_query(query)
         

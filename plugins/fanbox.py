@@ -286,7 +286,7 @@ class Fanbox(PluginBase):
             related_urls=creator.profileLinks
         )
     
-    async def iterate_query(self, query, begin_at=None):
+    async def iterate_query(self, query, state=None, begin_at=None):
         await self.probe_query(query)
         
         page_params = {
