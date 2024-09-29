@@ -262,7 +262,7 @@ class PluginWrapper:
         
         begin_at = None
         end_at = None
-        custom_state = None
+        custom_state: dict[str, Any] = {}
         if subscription is not None:
             state = Dynamic.from_json(subscription.state)
             if not is_head:

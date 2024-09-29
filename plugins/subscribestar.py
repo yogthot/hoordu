@@ -240,11 +240,11 @@ class SubStar(PluginBase):
             title=query.user
         )
     
-    async def iterate_query(self, query, state=None, begin_at=None):
+    async def iterate_query(self, query, state, begin_at=None):
         main_url = f'https://subscribestar.adult/{query.user}'
         next_page = None
         
-        if begin_at is not None and state is not None:
+        if begin_at is not None:
             page_end_order = state.get('page_end_order')
             if page_end_order == -1:
                 return
@@ -287,12 +287,11 @@ class SubStar(PluginBase):
                 yield int(post_id), post_id, post
             
             if next_page is not None:
-                if begin_at is not None and state is not None:
+                if begin_at is not None or 'page_end_order' not in state:
                     state['page_end_order'] = yarl.URL(next_page).query['page_end_order_position']
                 
             else:
-                if state is not None:
-                    state['page_end_order'] = -1
+                state['page_end_order'] = -1
                 return
 
 Plugin = SubStar

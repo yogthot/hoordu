@@ -273,7 +273,7 @@ class Patreon(PluginBase):
             related_urls=related_urls
         )
     
-    async def iterate_query(self, query, state=None, begin_at=None):
+    async def iterate_query(self, query, state, begin_at=None):
         cursor = None
         
         while True:

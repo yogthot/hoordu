@@ -171,8 +171,7 @@ class Nijie(PluginBase):
             related_urls=urls
         )
     
-    async def iterate_query(self, query, state=None, begin_at=None):
-        # TODO save page???
+    async def iterate_query(self, query, state, begin_at=None):
         page_id = 1 if begin_at is None else state.get('page_id', 1)
         
         try:
@@ -199,7 +198,7 @@ class Nijie(PluginBase):
                 page_id += 1
             
         finally:
-            if state is not None and (begin_at is not None or 'page_id' not in state):
+            if begin_at is not None or 'page_id' not in state:
                 state['page_id'] = page_id
 
 Plugin = Nijie
