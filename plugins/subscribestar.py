@@ -151,6 +151,11 @@ class SubStar(PluginBase):
         if post_date is None:
             post_date = self._get_text(post_data, '.section-subtitle')
         
+        if post_date is None:
+            post_date = self._get_text(post_data, '.section-title .star_link-types')
+        
+        print(post_date)
+        
         post.post_time = dateutil.parser.parse(post_date).replace(tzinfo=None)
         
         user_els = post_data.select('.post-avatar')
@@ -182,7 +187,7 @@ class SubStar(PluginBase):
             order = 0
             for rfile in gallery:
                 post.files.append(FileDetails(
-                    url=rfile.url,
+                    url=parse_href(url, rfile.url),
                     filename=rfile.original_filename,
                     identifier=str(rfile.id),
                     order=order
@@ -293,6 +298,8 @@ class SubStar(PluginBase):
             else:
                 state['page_end_order'] = -1
                 return
+
+# TODO test this whole thing
 
 Plugin = SubStar
 
