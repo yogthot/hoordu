@@ -1,7 +1,7 @@
 import abc
 from enum import Enum
 from typing import Any, Optional, ClassVar, Protocol, Type, TypeVar, Generic, Union
-from collections.abc import AsyncIterator, AsyncIterable, Iterable
+from collections.abc import AsyncGenerator, AsyncIterable, Iterable
 
 from dataclasses import dataclass, field
 from sqlalchemy import select
@@ -168,7 +168,7 @@ class PluginBase:
         return None
     
     @abc.abstractmethod
-    def iterate_query(self, query: Dynamic, state: dict[str, Any], begin_at: Optional[int]=None) -> AsyncIterator[tuple[int, Union[str, None], Any]]:
+    def iterate_query(self, query: Dynamic, state: dict[str, Any], begin_at: Optional[int]=None) -> AsyncGenerator[tuple[int, Union[str, None], Any]]:
         """
         Iterates a given query.
         begin_at will be set to the last returned sort index when attempting to load more

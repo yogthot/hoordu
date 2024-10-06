@@ -1,7 +1,7 @@
 import abc
 from enum import Enum
 from typing import Any, Optional, ClassVar, Protocol, Type, TypeVar, Generic
-from collections.abc import AsyncIterator, AsyncIterable, Iterable
+from collections.abc import AsyncGenerator, AsyncIterable, Iterable
 
 from sqlalchemy import select
 
@@ -249,7 +249,7 @@ class PluginWrapper:
     async def _iterate_query(self,
         is_head: bool,
         opt: Dynamic | Subscription
-    ) -> AsyncIterator[RemotePost]:
+    ) -> AsyncGenerator[RemotePost]:
         if isinstance(opt, Subscription):
             subscription = opt
             query = Dynamic.from_json(opt.options)
@@ -326,9 +326,9 @@ class PluginWrapper:
             
             await self.session.commit()
     
-    def update(self, opt: Subscription | Dynamic) -> AsyncIterator[RemotePost]:
+    def update(self, opt: Subscription | Dynamic) -> AsyncGenerator[RemotePost]:
         return self._iterate_query(True, opt)
     
-    def fetch(self, opt: Subscription | Dynamic) -> AsyncIterator[RemotePost]:
+    def fetch(self, opt: Subscription | Dynamic) -> AsyncGenerator[RemotePost]:
         return self._iterate_query(False, opt)
 

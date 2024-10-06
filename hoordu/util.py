@@ -21,7 +21,7 @@ from tempfile import mkstemp
 from typing import Any, TypeVar, ParamSpec
 
 
-DATAURI_REGEX = re.compile('^data:(?P<mime>[^\/;,]+\/[^;,]+)(?P<parameters>;[^;,]+)+,(?P<content>.*)$')
+DATAURI_REGEX = re.compile(r'^data:(?P<mime>[^\/;,]+\/[^;,]+)(?P<parameters>;[^;,]+)+,(?P<content>.*)$')
 
 
 # handle both python-magic libraries
