@@ -148,7 +148,7 @@ class PluginWrapper:
         post_files = await remote_post.awaitable_attrs.files
         
         by_order = {file.remote_order: file for file in post_files}
-        by_identifier = {file.metadata_: file for file in post_files}
+        by_identifier = {file.remote_identifier: file for file in post_files}
         
         for i, file_details in enumerate(post_details.files):
             order = file_details.order if file_details.order is not None else i
@@ -163,7 +163,8 @@ class PluginWrapper:
                     remote=remote_post,
                     remote_order=order,
                     filename=file_details.filename,
-                    metadata_=file_details.identifier
+                    remote_identifier=file_details.identifier,
+                    metadata_=file_details.metadata
                 )
                 self.session.add(file)
                 await self.session.flush()

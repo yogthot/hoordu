@@ -318,6 +318,7 @@ class File(Base, MetadataHelper):
     
     local_order: Mapped[Optional[int]] = mapped_column(Integer, default=0)
     remote_order: Mapped[Optional[int]] = mapped_column(Integer, default=0)
+    remote_identifier: Mapped[Optional[str]] = mapped_column(Text)
     
     # hash is md5 for compatibility
     hash: Mapped[Optional[bytes]] = mapped_column(LargeBinary(length=16), index=True)

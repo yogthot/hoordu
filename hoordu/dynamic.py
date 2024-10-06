@@ -56,21 +56,21 @@ class Dynamic(dict):
             json.dump(self, json_file)
     
     @classmethod
-    def from_module(cls, filename: str | os.PathLike) -> 'Dynamic':
+    def from_module(cls, filename: str | os.PathLike) -> Any:
         module_name = '_hoordu_config.' + Path(filename).name.split('.')[0]
         module = importlib.machinery.SourceFileLoader(module_name, str(filename)).load_module()
         
         return cls((k, getattr(module, k)) for k in dir(module) if not k.startswith('_'))
     
     @classmethod
-    def from_json(cls, json_string: str | bytes | None) -> Union['Dynamic', list['Dynamic'], Any]:
+    def from_json(cls, json_string: str | bytes | None) -> Any:
         if json_string is None:
             return cls()
         
         return json.loads(json_string, object_hook=cls)
     
     @classmethod
-    def from_file(cls, filename: str | os.PathLike) -> 'Dynamic':
+    def from_file(cls, filename: str | os.PathLike) -> Any:
         with open(filename) as json_file:
             s = json.load(json_file, object_hook=cls)
         

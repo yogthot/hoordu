@@ -47,6 +47,7 @@ class FileDetails:
     order: Optional[int] = None
     filename: Optional[str] = None
     identifier: Optional[str] = None
+    metadata: Optional[str] = None
 
 
 @dataclass
