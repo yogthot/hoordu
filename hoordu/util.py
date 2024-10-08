@@ -21,9 +21,6 @@ from tempfile import mkstemp
 from typing import Any, TypeVar, ParamSpec
 
 
-DATAURI_REGEX = re.compile(r'^data:(?P<mime>[^\/;,]+\/[^;,]+)(?P<parameters>;[^;,]+)+,(?P<content>.*)$')
-
-
 # handle both python-magic libraries
 import magic
 if hasattr(magic, 'open'):
@@ -65,8 +62,14 @@ def template_format(format: str, **kwargs: Any):
     if format is not None:
         return Template(format).substitute(kwargs)
 
+
+DATAURI_REGEX = re.compile(r'^data:(?P<mime>[^\/;,]+\/[^;,]+)(?P<parameters>;[^;,]+)+,(?P<content>.*)$')
+
 def save_data_uri(data_uri: str):
     match = DATAURI_REGEX.match(data_uri)
+    if match is None:
+        raise Exception('not a data uri')
+    
     mime = match.group('mime')
     if mime is None:
         mime = 'text/plain'
@@ -77,7 +80,7 @@ def save_data_uri(data_uri: str):
         if ext is None:
             ext = mime.split('/')[-1]
     
-    content = match.group('content')
+    content = str(match.group('content'))
     
     parameters = match.group('parameters')
     if parameters:

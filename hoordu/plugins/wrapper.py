@@ -190,6 +190,11 @@ class PluginWrapper:
                             orig = await save_response(resp, suffix=file_details.filename)
                         is_move = True
                     
+                    case 'data':
+                        path = save_data_uri(file_details.url)
+                        is_move = True
+                        pass
+                    
                     case _:
                         self.log.warning(f'unknown scheme: {url.scheme}')
                         raise Exception(f'unable to download file url: {url}')

@@ -1,7 +1,7 @@
 import re
 
 def parse_href(page_url, href):
-    if re.match(r'^https?:\/\/\S+$', href):
+    if re.match(r'^[a-zA-Z]+:', href):
         return href
     
     if href.startswith('//'):
