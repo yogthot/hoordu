@@ -128,9 +128,14 @@ class PluginWrapper:
         self.log.info(f'local id: {remote_post.id}')
         
         remote_post.url = post_details.url
-        remote_post.comment = post_details.comment
         remote_post.type = post_details.type or PostType.set
-        remote_post.post_time = post_details.post_time
+        
+        if post_details.title is not None:
+            remote_post.comment = post_details.title
+        if post_details.comment is not None:
+            remote_post.comment = post_details.comment
+        if post_details.post_time is not None:
+            remote_post.post_time = post_details.post_time
         
         for name, value in post_details.metadata.items():
             remote_post.update_metadata(name, value)
@@ -141,9 +146,6 @@ class PluginWrapper:
                 if tag.update_metadata(name, value):
                     self.session.add(tag)
             await remote_post.add_tag(tag)
-        
-        for url in post_details.related:
-            await remote_post.add_related_url(url)
         
         post_files = await remote_post.awaitable_attrs.files
         
@@ -198,6 +200,20 @@ class PluginWrapper:
         remote_post.favorite = post_details.is_favorite
         remote_post.hidden = post_details.is_hidden
         remote_post.removed = post_details.is_removed
+        
+        existing_related = await remote_post.awaitable_attrs.related
+        for url in post_details.related:
+            if isinstance(url, str):
+                await remote_post.add_related_url(url)
+                
+            else:
+                related_post_id, related_post_details = url
+                
+                _, related_post = await self._get_post(related_post_id)
+                related_post = await self._convert_post(related_post, related_post_details)
+                
+                if not any(r.remote_id == related_post.id for r in existing_related):
+                    self.session.add(Related(related_to=remote_post, remote=related_post))
         
         self.session.add(remote_post)
         return remote_post
@@ -289,6 +305,7 @@ class PluginWrapper:
                     remote_post = None
                     if post_id is not None:
                         exists, remote_post = await self._get_post(post_id)
+                        #if not exists:
                         post_details = await self.instance.download(post_id, post_data)
                         post = await self._convert_post(remote_post, post_details)
                         

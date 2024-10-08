@@ -66,7 +66,7 @@ class PostDetails:
     metadata: dict[str, Any] = field(default_factory=dict)
     post_time: Optional[datetime] = None
     tags: list[TagDetails] = field(default_factory=list)
-    related: list[str] = field(default_factory=list)
+    related: list[Union[str, tuple[str, 'PostDetails']]] = field(default_factory=list)
     files: list[FileDetails] = field(default_factory=list)
     
     is_favorite: bool = False
