@@ -1,23 +1,11 @@
-#!/usr/bin/env python3
-
-import os
 import re
-from datetime import datetime, timezone
 import dateutil.parser
-from tempfile import mkstemp
-import shutil
-from urllib.parse import urlparse
-import functools
-
-import aiohttp
-import contextlib
 from bs4 import BeautifulSoup
 
-import hoordu
+from hoordu.dynamic import Dynamic
 from hoordu.models import *
 from hoordu.plugins import *
 from hoordu.forms import *
-from hoordu.util import save_data_uri
 from hoordu.plugins.helpers import parse_href
 
 POST_FORMAT = 'https://fantia.jp/posts/{post_id}'
@@ -29,7 +17,6 @@ FILENAME_REGEXP = re.compile(r'^[a-z0-9]+-(?P<filename>.+)$')
 POST_GET_URL = 'https://fantia.jp/api/v1/posts/{post_id}'
 FANCLUB_URL = 'https://fantia.jp/fanclubs/{fanclub_id}'
 FANCLUB_GET_URL = 'https://fantia.jp/api/v1/fanclubs/{fanclub_id}'
-FILE_DOWNLOAD_URL = 'https://fantia.jp{download_uri}'
 
 
 class Fantia(PluginBase):
@@ -58,7 +45,7 @@ class Fantia(PluginBase):
         
         match = FANCLUB_REGEXP.match(url)
         if match:
-            return hoordu.Dynamic({
+            return Dynamic({
                 'creator_id': match.group('fanclub_id')
             })
         
@@ -139,7 +126,7 @@ class Fantia(PluginBase):
             post.type = PostType.set
             
         elif content_data.category == 'blog':
-            sections = hoordu.Dynamic.from_json(content_data.comment).ops
+            sections = Dynamic.from_json(content_data.comment).ops
             blog = []
             order = 0
             for section in sections:
@@ -188,7 +175,7 @@ class Fantia(PluginBase):
                     else:
                         self.log.warning(f'unknown blog insert: {str(insert)}')
             
-            post.comment = hoordu.Dynamic({'comment': blog}).to_json()
+            post.comment = Dynamic({'comment': blog}).to_json()
             post.type = PostType.blog
             
         elif content_data.category == 'product':
@@ -209,7 +196,7 @@ class Fantia(PluginBase):
         if post_data is None:
             async with self.http.get(POST_GET_URL.format(post_id=post_id), headers=headers) as response:
                 response.raise_for_status()
-                post_data = hoordu.Dynamic.from_json(await response.text()).post
+                post_data = Dynamic.from_json(await response.text()).post
         
         id_parts = post_id.split('-')
         if len(id_parts) == 2:
@@ -231,7 +218,7 @@ class Fantia(PluginBase):
         creator_id = str(post_data.fanclub.id)
         creator_name = post_data.fanclub.user.name
         # possible timezone issues?
-        post_time = dateutil.parser.parse(post_data.posted_at).astimezone(timezone.utc).replace(tzinfo=None)
+        post_time = dateutil.parser.parse(post_data.posted_at)
         
         post.url = POST_FORMAT.format(post_id=post_id)
         post.title = post_data.title
@@ -281,7 +268,7 @@ class Fantia(PluginBase):
         
         async with self.http.get(FANCLUB_GET_URL.format(fanclub_id=query.creator_id)) as response:
             response.raise_for_status()
-            fanclub = hoordu.Dynamic.from_json(await response.text()).fanclub
+            fanclub = Dynamic.from_json(await response.text()).fanclub
         
         related_urls = {str(x['href']) for x in html.select('main .btns:not(.share-btns) a')}
         
@@ -299,7 +286,7 @@ class Fantia(PluginBase):
         if post_id is None:
             async with self.http.get(FANCLUB_GET_URL.format(fanclub_id=query.creator_id)) as response:
                 response.raise_for_status()
-                fanclub = hoordu.Dynamic.from_json(await response.text()).fanclub
+                fanclub = Dynamic.from_json(await response.text()).fanclub
             
             if not fanclub.recent_posts:
                 return
@@ -318,7 +305,7 @@ class Fantia(PluginBase):
                 if was_deleted:
                     raise Exception('post was deleted...')
                 response.raise_for_status()
-                post = hoordu.Dynamic.from_json(await response.text()).post
+                post = Dynamic.from_json(await response.text()).post
             
             # the wrapper will automatically skip the begin_at post if not None
             

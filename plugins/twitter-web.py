@@ -1,19 +1,8 @@
-import os
 import re
-from datetime import datetime, timezone
-from tempfile import mkstemp
-import shutil
-from urllib.parse import urlparse
-import functools
-from collections import OrderedDict
 import dateutil.parser
 import json
 
-import aiohttp
-import contextlib
-import asyncio
-
-import hoordu
+from hoordu.dynamic import Dynamic
 from hoordu.models import *
 from hoordu.plugins import *
 from hoordu.forms import *
@@ -89,7 +78,7 @@ class Twitter(PluginBase):
             #    method = 'tweets'
             method = 'tweets'
             
-            return hoordu.Dynamic({
+            return Dynamic({
                 'user': user,
                 'method': method
             })
@@ -151,7 +140,7 @@ class Twitter(PluginBase):
         }
         
         async with self.http.get(TWEET_DETAIL_URL, params=params) as resp:
-            body = hoordu.Dynamic.from_json(await resp.text())
+            body = Dynamic.from_json(await resp.text())
         
         instructions = body.data.threaded_conversation_with_injections_v2.instructions
         for inst in instructions:
@@ -311,7 +300,7 @@ class Twitter(PluginBase):
         }
         
         async with self.http.get(url, params=params) as resp:
-            body = hoordu.Dynamic.from_json(await resp.text())
+            body = Dynamic.from_json(await resp.text())
         
         user = body.get_path('data', 'user', 'result')
         
@@ -559,7 +548,7 @@ class Twitter(PluginBase):
         async with self.http.get(TIMELINE_URL, params=params) as resp:
             text = await resp.text()
             try:
-                return hoordu.Dynamic.from_json(text)
+                return Dynamic.from_json(text)
             except:
                 raise APIError(text)
     
@@ -611,7 +600,7 @@ class Twitter(PluginBase):
         async with self.http.get(MEDIATIMELINE_URL, params=params) as resp:
             text = await resp.text()
             try:
-                return hoordu.Dynamic.from_json(text)
+                return Dynamic.from_json(text)
             except:
                 raise APIError(text)
     
@@ -661,7 +650,7 @@ class Twitter(PluginBase):
         }
         
         async with self.http.get(LIKES_URL, params=params) as resp:
-            return hoordu.Dynamic.from_json(await resp.text())
+            return Dynamic.from_json(await resp.text())
 
 Plugin = Twitter
 
