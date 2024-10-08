@@ -40,11 +40,10 @@ class Fanbox(PluginBase):
             ('creator', Input('creator', [validators.required()]))
         )
     
-    async def setup(self):
+    async def init(self):
         self.http.headers.update({
             'Origin': 'https://www.fanbox.cc',
-            'Referer': 'https://www.fanbox.cc/',
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:80.0) Gecko/20100101 Firefox/82.0'
+            'Referer': 'https://www.fanbox.cc/'
         })
         self.http.cookie_jar.update_cookies({
             'FANBOXSESSID': self.config.FANBOXSESSID

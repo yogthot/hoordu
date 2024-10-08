@@ -51,11 +51,10 @@ class Fantia(PluginBase):
         
         return None
     
-    async def setup(self):
+    async def init(self):
         self.http.headers.update({
             'Origin': 'https://fantia.jp/',
-            'Referer': 'https://fantia.jp/',
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:80.0) Gecko/20100101 Firefox/82.0'
+            'Referer': 'https://fantia.jp/'
         })
         self.http.cookie_jar.update_cookies({
             '_session_id': self.config.session_id

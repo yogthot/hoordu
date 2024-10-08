@@ -137,7 +137,7 @@ class PluginBase:
         
         return None
     
-    async def setup(self) -> None:
+    async def init(self) -> None:
         """
         Called right after everything is ready to use but before any other method is called.
         Use this to add headers or cookies to the http client, or do any other initial setup.

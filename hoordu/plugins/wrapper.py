@@ -105,14 +105,21 @@ class PluginWrapper:
         self.plugin = await self.get_plugin(self.session)
         self.config = Dynamic.from_json(self.source.config)
         
-        self.http = aiohttp.ClientSession()
+        # TODO expose this to the caller somehow
+        useragent = 'Mozilla/5.0 (X11; Linux x86_64; rv:130.0) Gecko/20100101 Firefox/130.0'
+        headers = {
+            'User-Agent': useragent,
+        }
+        
+        self.http = aiohttp.ClientSession(headers=headers)
+        
         self.instance = self.plugin_class()
         self.instance.log = self.log
         self.instance.config = Dynamic.from_json(self.plugin.config)
         
         async with self.http:
             self.instance.http = self.http
-            await self.instance.setup()
+            await self.instance.init()
             yield self
     
     async def _convert_post(self,

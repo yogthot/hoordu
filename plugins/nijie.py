@@ -34,10 +34,7 @@ class Nijie(PluginBase):
             ('user_id', Input('user id', [validators.required()]))
         )
     
-    async def setup(self):
-        self.http.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:80.0) Gecko/20100101 Firefox/100.0'
-        })
+    async def init(self):
         self.http.cookie_jar.update_cookies({
             'NIJIEIJIEID': self.config.NIJIEIJIEID,
             'nijie_tok': self.config.nijie_tok,

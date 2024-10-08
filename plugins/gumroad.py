@@ -25,7 +25,7 @@ class Gumroad(PluginBase):
             ('gumroad_app_session', Input('_gumroad_app_session cookie', [validators.required()])),
         )
     
-    async def setup(self):
+    async def init(self):
         self.http.cookie_jar.update_cookies({
             '_gumroad_guid': self.config.gumroad_guid,
             '_gumroad_app_session': self.config.gumroad_app_session,

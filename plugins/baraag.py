@@ -57,7 +57,7 @@ class Baraag(PluginBase):
         
         return None
     
-    async def setup(self):
+    async def init(self):
         self.http.headers.update({
             'Authorization': f'Bearer {self.config.token}'
         })
