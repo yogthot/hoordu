@@ -124,6 +124,29 @@ class PluginBase:
 
         return None
     
+    @classmethod
+    async def setup(cls, config: Dynamic, parameters: Optional[dict[str, Any]] = None) -> tuple[bool, Optional[Form]]:
+        """
+        Checks whether the configuration is valid, or if anything else is needed.
+        If new parameters are needed, this should return a form with the extra inputs.
+        If needed, the config object may be modified in place.
+        """
+        
+        if parameters is not None:
+            config.update(parameters)
+        
+        form = cls.config_form()
+        if form is None:
+            return True, None
+            
+        else:
+            form.fill(config)
+            if form.validate():
+                return True, None
+                
+            else:
+                return False, form
+    
     # TODO generalize this with some kinda pattern matching? or a dictionary at the class level?
     @classmethod
     async def parse_url(cls, url: str) -> str | Dynamic | None:

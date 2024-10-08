@@ -118,24 +118,12 @@ class hoordu:
                 session.add(source)
                 await session.flush()
             
-            config: Dynamic = Dynamic.from_json(plugin.config)
+            config = Dynamic.from_json(plugin.config)
             
-            if parameters is not None:
-                config.update(parameters)
+            success, form = await plugin_class.setup(config, parameters)
             
-            success = False
-            form = plugin_class.config_form()
-            if form is None:
-                success = True
-                
-            else:
-                form.fill(config)
-                success = form.validate()
-                
-                if success:
-                    plugin.config = config.to_json()
-                    session.add(plugin)
-            
+            plugin.config = config.to_json()
+            session.add(plugin)
             await session.commit()
         
             if success:
