@@ -220,15 +220,16 @@ async def _cli_form(form):
     form.clear()
     
     print(f'== {form.label} ===========')
-    #if isinstance(form, OAuthForm):
-    #    print('Please visit the following url and authorize to continue.')
-    #    print(form.url)
-    #    oauth_server = OAuthServer(8941)
-    #    path, params = await oauth_server.wait_for_request()
-    #    
-    #    plugin_id = path[1:]
-    #    form.fill(params)
-    #    return
+    if isinstance(form, OAuthForm):
+        print('Please visit the following url and authorize to continue.')
+        print(form.url)
+        # TODO the redirect uri should be "generic"
+        oauth_server = OAuthServer(8941)
+        path, params = await oauth_server.wait_for_request()
+        
+        plugin_id = path[1:]
+        form.fill(params)
+        return
     
     for entry in form.entries:
         if entry.errors:
