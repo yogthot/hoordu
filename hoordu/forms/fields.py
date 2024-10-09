@@ -1,18 +1,20 @@
 from typing import Optional, Protocol, Any
 from collections import OrderedDict
 
-from .validators import *
+from .validators import Validator, ValidationError, StopValidation
 
 __all__ = [
     'FormEntry',
     'Label',
+    'HiddenInput',
     'Input',
     'PasswordInput',
     'ChoiceInput'
 ]
 
+
 class FormEntry:
-    def __init__(self, identifier:str = None):
+    def __init__(self, identifier: str = None):
         self.id = identifier
     
     def clear(self) -> None:
@@ -28,18 +30,45 @@ class FormEntry:
     def errors(self) -> list[str]:
         return []
 
+
 class Label(FormEntry):
-    def __init__(self, label):
+    def __init__(self, label: str):
         super().__init__()
         
         self.label = label
 
+
+class HiddenInput(FormEntry):
+    def __init__(self, value: Optional[str] = None):
+        super().__init__()
+        
+        self.initial_value = value
+        self.value = value
+    
+    def clear(self) -> None:
+        self.value = self.initial_value
+    
+    def fill(self, value):
+        self.value = value
+    
+    def validate(self):
+        self._errors = []
+        if self.value is None:
+            self._errors.append('hidden input cannot be empty')
+        
+        return len(self._errors) == 0
+    
+    @property
+    def errors(self) -> list[str]:
+        return self._errors
+
+
 class Input(FormEntry):
     def __init__(self,
-        label:str,
-        validators:Optional[list[Validator]] = None,
-        identifier:str = None,
-        default:Optional[str] = None
+        label: str,
+        validators: Optional[list[Validator]] = None,
+        identifier: str = None,
+        default: Optional[str] = None
     ):
         super().__init__(identifier)
 
@@ -68,7 +97,7 @@ class Input(FormEntry):
                 except ValidationError as err:
                     self._errors.append(str(err))
             
-            return True
+            return len(self._errors) == 0
             
         except StopValidation as err:
             message = str(err)
@@ -91,8 +120,10 @@ class Input(FormEntry):
     def errors(self) -> list[str]:
         return self._errors
 
+
 class PasswordInput(Input):
     pass
+
 
 class ChoiceInput(Input):
     def __init__(self,
@@ -113,6 +144,7 @@ class ChoiceInput(Input):
     def _validate_choice(self, field: FormEntry = None) -> None:
         if self.value not in self.choices:
             raise StopValidation('{} is not a valid choice'.format(self.value))
+
 
 class FileInput(Input):
     def __init__(self,

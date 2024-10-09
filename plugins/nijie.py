@@ -1,12 +1,8 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 import re
-from datetime import datetime, timedelta, timezone
+import itertools
 import dateutil.parser
-from urllib import parse as urlparse
+import yarl
 
-import aiohttp
 from bs4 import BeautifulSoup
 
 import hoordu
@@ -15,230 +11,80 @@ from hoordu.plugins import *
 from hoordu.forms import *
 from hoordu.plugins.helpers import parse_href
 
-POST_FORMAT = 'https://nijie.info/view.php?id={post_id}'
-POPUP_FORMAT = 'https://nijie.info/view_popup.php?id={post_id}'
 POST_URL = ['nijie.info/view.php', 'www.nijie.info/view.php']
-USER_INFO_URL = 'https://nijie.info/members.php'
-USER_ILLUST_URL = 'https://nijie.info/members_illust.php'
 USER_URL = [
     'nijie.info/members.php',
     'nijie.info/members_illust.php',
     'nijie.info/members_dojin.php',
 ]
 
-class UserIterator(IteratorBase['Nijie']):
-    def __init__(self, plugin, subscription=None, options=None):
-        super().__init__(plugin, subscription=subscription, options=options)
-        
-        self.http: aiohttp.ClientSession = plugin.http
-        
-        self.first_id = None
-        self.state.head_id = self.state.get('head_id')
-        self.state.tail_id = self.state.get('tail_id')
-        self.state.tail_page = self.state.get('tail_page', 1)
-    
-    def __repr__(self):
-        return 'user:{}'.format(self.options.user_id)
-    
-    def reconfigure(self, direction=FetchDirection.newer, num_posts=None):
-        if direction == FetchDirection.newer:
-            if self.state.tail_id is None:
-                direction = FetchDirection.older
-            else:
-                num_posts = None
-        
-        super().reconfigure(direction=direction, num_posts=num_posts)
-    
-    async def _get_page(self, page_id=None):
-        # https://nijie.info/members_illust.php?p={page_id (1 indexed)}&id={user_id}
-        if page_id is None: page_id = 1
-        
-        params = {
-            'p': page_id,
-            'id': self.options.user_id,
-        }
-        async with self.http.get(USER_ILLUST_URL, params=params) as response:
-            response.raise_for_status()
-            html = BeautifulSoup(await response.text(), 'html.parser')
-        
-        post_urls = [e['href'] for e in html.select('#members_dlsite_left .picture a')]
-        return [int(urlparse.parse_qs(urlparse.urlparse(url).query)['id'][0]) for url in post_urls]
-    
-    async def _iterator(self):
-        page_id = self.state.tail_page if self.direction == FetchDirection.older else 1
-        
-        first_iteration = True
-        while True:
-            post_ids = await self._get_page(page_id)
-            if len(post_ids) == 0:
-                # empty page, stopping
-                return
-            
-            if self.direction == FetchDirection.older:
-                self.state.tail_page = page_id
-            
-            for post_id in post_ids:
-                if self.direction == FetchDirection.newer and post_id <= self.state.head_id:
-                    return
-                
-                if self.direction == FetchDirection.older and self.state.tail_id is not None and post_id >= self.state.tail_id:
-                    continue
-                
-                if first_iteration and (self.state.head_id is None or self.direction == FetchDirection.newer):
-                    self.first_id = post_id
-                
-                db_post = await self.plugin._to_remote_post(str(post_id), preview=self.subscription is None)
-                yield post_id, db_post
-                
-                if self.direction == FetchDirection.older:
-                    self.state.tail_id = post_id
-                
-                if self.num_posts is not None:
-                    self.num_posts -= 1
-                    if self.num_posts <= 0:
-                        return
-                
-                first_iteration = False
-            
-            page_id += 1
-    
-    async def generator(self):
-        async for sort_index, post in self._iterator():
-            yield post
-            
-            if self.subscription is not None:
-                await self.subscription.add_post(post, sort_index)
-            
-            await self.session.commit()
-        
-        if self.first_id is not None:
-            self.state.head_id = self.first_id
-            self.first_id = None
-        
-        if self.subscription is not None:
-            self.subscription.state = self.state.to_json()
-            self.session.add(self.subscription)
-        
-        await self.session.commit()
-
-class Nijie(SimplePlugin):
-    name = 'nijie'
-    version = 1
-    iterator = UserIterator
+class Nijie(PluginBase):
+    source = 'nijie'
     
     @classmethod
     def config_form(cls):
-        return Form('{} config'.format(cls.name),
-            ('NIJIEIJIEID', Input('NIJIEIJIEID cookie', [validators.required])),
-            ('nijie_tok', Input('nijie_tok cookie', [validators.required])),
+        return Form(f'{cls.source} config',
+            ('NIJIEIJIEID', Input('NIJIEIJIEID cookie', [validators.required()])),
+            ('nijie_tok', Input('nijie_tok cookie', [validators.required()])),
         )
     
     @classmethod
-    async def setup(cls, session, parameters=None):
-        plugin = await cls.get_plugin(session)
-        
-        # check if everything is ready to use
-        config = hoordu.Dynamic.from_json(plugin.config)
-        
-        # use values from the parameters if they were passed
-        if parameters is not None:
-            config.update(parameters)
-            
-            plugin.config = config.to_json()
-            session.add(plugin)
-        
-        if not config.contains('NIJIEIJIEID', 'nijie_tok'):
-            # but if they're still None, the api can't be used
-            return False, cls.config_form()
-            
-        else:
-            # the config contains every required property
-            return True, None
+    def search_form(cls):
+        return Form(f'{cls.source} search',
+            ('user_id', Input('user id', [validators.required()]))
+        )
     
-    @classmethod
-    async def update(cls, session):
-        plugin = await cls.get_plugin(session)
-        
-        if plugin.version < cls.version:
-            # update anything if needed
-            
-            # if anything was updated, then the db entry should be updated as well
-            plugin.version = cls.version
-            session.add(plugin)
+    async def init(self):
+        self.http.cookie_jar.update_cookies({
+            'NIJIEIJIEID': self.config.NIJIEIJIEID,
+            'nijie_tok': self.config.nijie_tok,
+        })
     
     @classmethod
     async def parse_url(cls, url):
         if url.isdigit():
             return url
         
-        p = urlparse.urlparse(url)
-        part = p.netloc + p.path
-        query = urlparse.parse_qs(p.query)
+        parsed = yarl.URL(url)
+        part = parsed.raw_authority + parsed.raw_path
         
         if part in POST_URL:
-            return query['id'][0]
+            return parsed.query['id']
         
         if part in USER_URL:
             return hoordu.Dynamic({
-                'user_id': query['id'][0]
+                'user_id': parsed.query['id']
             })
         
         return None
     
-    @contextlib.asynccontextmanager
-    async def context(self):
-        async with super().context():
-            self._headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:80.0) Gecko/20100101 Firefox/100.0'
-            }
-            self.cookies = {
-                'NIJIEIJIEID': self.config.NIJIEIJIEID,
-                'nijie_tok': self.config.nijie_tok,
-            }
-            
-            async with aiohttp.ClientSession(headers=self._headers, cookies=self.cookies) as http:
-                self.http: aiohttp.ClientSession = http
-                yield self
-    
-    async def _download_file(self, url):
-        path, resp = await self.session.download(url, cookies=self.cookies)
-        return path
-    
-    async def _to_remote_post(self, id, remote_post=None, preview=False):
-        url = POST_FORMAT.format(post_id=id)
+    async def download(self, post_id, post_data=None):
+        post_url = str(yarl.URL('https://nijie.info/view.php').with_query({'id': post_id}))
         
-        async with self.http.get(url) as response:
-            response.raise_for_status()
-            post = BeautifulSoup(await response.text(), 'html.parser')
+        if post_data is None:
+            async with self.http.get(post_url) as response:
+                response.raise_for_status()
+                post_data = BeautifulSoup(await response.text(), 'html.parser')
         
-        # if there is no title, chances are the cookie doesn't work
-        # TODO need a way to detect if the cookie works or not, no error code is returned
-        title = post.select('.illust_title')[0].text
-        
-        post_files = post.select("#gallery .mozamoza")
+        post_files = post_data.select("#gallery .mozamoza")
         user_id = post_files[0]['user_id']
+        if not isinstance(user_id, str):
+            raise APIError('failed to find user id')
         
-        user_name = list(post.select("#pro .name")[0].children)[2]
+        user_name = list(post_data.select("#pro .name")[0].children)[2]
         
-        timestamp = post.select("#view-honbun span")[0].text.split('：', 1)[-1]
-        post_time = dateutil.parser.parse(timestamp)
+        timestamp = post_data.select("#view-honbun span")[0].text.split('：', 1)[-1]
         
-        if remote_post is None:
-            remote_post = await self._get_post(id)
+        post = PostDetails()
+        post.url = post_url
+        post.title = post_data.select('.illust_title')[0].text
+        post.type = PostType.set
+        post.post_time = dateutil.parser.parse(timestamp)
         
-        remote_post.url = url
-        remote_post.title = title
-        remote_post.type = PostType.set
-        remote_post.post_time = post_time
-        
-        self.log.info(f'downloading post: {remote_post.original_id}')
-        self.log.info(f'local id: {remote_post.id}')
-        
-        
-        comment_html = post.select('#illust_text')[0]
+        comment_html = post_data.select('#illust_text')[0]
         
         urls = []
-        page_url = POST_FORMAT.format(post_id=id)
+        page_url = f'https://nijie.info/view.php?id={post_id}'
         for a in comment_html.select('a'):
             url = parse_href(page_url, a['href'])
             urls.append(url)
@@ -251,27 +97,26 @@ class Nijie(SimplePlugin):
         for para in comment_html.find_all('p'):
             para.replace_with(para.text + '\n')
         
-        remote_post.comment = comment_html.text
-        self.session.add(remote_post)
+        post.comment = comment_html.text
         
+        post.tags.append(TagDetails(
+            category=TagCategory.artist,
+            tag=user_id,
+            metadata={'name': user_name}
+        ))
         
-        user_tag = await self._get_tag(TagCategory.artist, user_id)
-        await remote_post.add_tag(user_tag)
-        
-        if user_tag.update_metadata('name', user_name):
-            self.session.add(user_tag)
-        
-        tags = post.select('#view-tag li.tag a')
+        tags = post_data.select('#view-tag li.tag a')
         for tag in tags:
-            remote_tag = await self._get_tag(TagCategory.general, tag.text)
-            await remote_post.add_tag(remote_tag)
+            post.tags.append(TagDetails(
+                category=TagCategory.general,
+                tag=tag.text
+            ))
         
         for url in urls:
-            await remote_post.add_related_url(url)
+            post.related.append(url)
         
         # files
-        popup_url = POPUP_FORMAT.format(post_id=id)
-        async with self.http.get(popup_url) as response:
+        async with self.http.get('https://nijie.info/view_popup.php', params={'id': post_id}) as response:
             response.raise_for_status()
             popup = BeautifulSoup(await response.text(), 'html.parser')
         
@@ -279,49 +124,19 @@ class Nijie(SimplePlugin):
         if len(files) != len(post_files):
             raise APIError(f'inconsistent files, please review the scraper ({len(files)}, {len(post_files)})')
         
-        available = set(range(len(files)))
-        present = set(file.remote_order for file in await remote_post.awaitable_attrs.files)
-        
-        for order in available - present:
-            file = File(remote=remote_post, remote_order=order)
-            self.session.add(file)
-            await self.session.flush()
-        
-        for file in await remote_post.awaitable_attrs.files:
-            f = files[file.remote_order]
+        for file, order in zip(files, itertools.count(1)):
+            orig_url = parse_href(page_url, file['src'])
+            #thumb_url = orig_url.replace('/nijie/', '/__rs_l120x120/nijie/')
             
-            orig_url = parse_href(page_url, f['src'])
-            thumb_url = orig_url.replace('/nijie/', '/__rs_l120x120/nijie/')
-            
-            need_orig = not file.present and not preview
-            need_thumb = not file.thumb_present
-            
-            if need_thumb or need_orig:
-                self.log.info(f'downloading file: {file.remote_order}')
-                
-                orig = await self._download_file(orig_url) if need_orig else None
-                thumb = await self._download_file(thumb_url) if need_thumb else None
-                
-                await self.session.import_file(file, orig=orig, thumb=thumb, move=True)
+            post.files.append(FileDetails(
+                url=orig_url,
+                order=order
+            ))
         
-        return remote_post
+        return post
     
-    async def download(self, id=None, remote_post=None, preview=False):
-        if id is None and remote_post is None:
-            raise ValueError('either id or remote_post must be passed')
-        
-        if remote_post is not None:
-            id = remote_post.original_id
-        
-        return await self._to_remote_post(id, remote_post=remote_post, preview=preview)
-    
-    def search_form(self):
-        return Form('{} search'.format(self.name),
-            ('user_id', Input('user id', [validators.required()]))
-        )
-    
-    async def get_search_details(self, options):
-        async with self.http.get(USER_INFO_URL, params={'id': options.user_id}) as response:
+    async def probe_query(self, query):
+        async with self.http.get('https://nijie.info/members.php', params={'id': query.user_id}) as response:
             response.raise_for_status()
             html = BeautifulSoup(await response.text(), 'html.parser')
         
@@ -331,11 +146,10 @@ class Nijie(SimplePlugin):
         
         desc_html = html.select('#prof-l')[0]
         
-        urls = set()
-        page_url = POST_FORMAT.format(post_id=id)
+        urls = list()
         for a in desc_html.select('a'):
             url = a.text
-            urls.add(url)
+            urls.append(url)
             
             a.replace_with(url)
         
@@ -346,6 +160,7 @@ class Nijie(SimplePlugin):
             dd.replace_with(dd.text + '\n')
         
         return SearchDetails(
+            identifier=f'user:{query.user_id}',
             hint=user_name.text,
             title=user_name.text,
             description=desc_html.text,
@@ -353,6 +168,34 @@ class Nijie(SimplePlugin):
             related_urls=urls
         )
     
+    async def iterate_query(self, query, state, begin_at=None):
+        page_id = 1 if begin_at is None else state.get('page_id', 1)
+        
+        try:
+            while True:
+                # ?p={page_id (1 indexed)}&id={user_id}
+                params = {
+                    'p': page_id,
+                    'id': query.user_id,
+                }
+                async with self.http.get('https://nijie.info/members_illust.php', params=params) as response:
+                    response.raise_for_status()
+                    html = BeautifulSoup(await response.text(), 'html.parser')
+                
+                post_urls = [e['href'] for e in html.select('#members_dlsite_left .picture a')]
+                post_ids = [int(yarl.URL(url).query['id']) for url in post_urls]
+                
+                if len(post_ids) == 0:
+                    # empty page, stopping
+                    return
+                
+                for post_id in post_ids:
+                    yield post_id, str(post_id), None
+                
+                page_id += 1
+            
+        finally:
+            if begin_at is not None or 'page_id' not in state:
+                state['page_id'] = page_id
+
 Plugin = Nijie
-
-

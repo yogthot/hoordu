@@ -1,9 +1,9 @@
 import re
 from urllib.parse import unquote
 
-re_filename = re.compile('filename= *([^;]+)', re.IGNORECASE)
-re_simple = re.compile('filename= *(.*)', re.IGNORECASE)
-re_ext = re.compile('filename\*= *UTF-8\'[^\']*\'(.*)', re.IGNORECASE)
+re_filename = re.compile(r'filename= *([^;]+)', re.IGNORECASE)
+re_simple = re.compile(r'filename= *(.*)', re.IGNORECASE)
+re_ext = re.compile(r'filename\*= *UTF-8\'[^\']*\'(.*)', re.IGNORECASE)
 
 def _sanitize(path):
     if path in ('.', '..'):
@@ -47,7 +47,7 @@ def filename(header):
     
     return simple_filenames
 
-def safe_filename(header):
+def safe_filename(header) -> str | None:
     try:
         return filename(header)
         

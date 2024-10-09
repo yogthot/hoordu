@@ -1,17 +1,13 @@
-import asyncio
 import re
 import itertools
-from datetime import datetime, timezone
-import dateutil.parser
-import aiohttp
 from bs4 import BeautifulSoup
 
-import hoordu
 from hoordu.models import *
 from hoordu.plugins import *
 from hoordu.forms import *
-from hoordu.oauth.client import *
+from hoordu.dynamic import Dynamic
 from hoordu.plugins.helpers import parse_href
+
 
 PRODUCT_FORMAT = 'https://{account_code}.gumroad.com/l/{product_code}'
 PRODUCT_REGEXP = [
@@ -19,53 +15,24 @@ PRODUCT_REGEXP = [
 ]
 
 
-class Gumroad(SimplePlugin):
-    name = 'gumroad'
-    version = 1
+class Gumroad(PluginBase):
+    source = 'gumroad'
     
     @classmethod
     def config_form(cls):
-        return Form('{} config'.format(cls.name),
-            ('gumroad_guid', Input('_gumroad_guid cookie', [validators.required])),
-            ('gumroad_app_session', Input('_gumroad_app_session cookie', [validators.required])),
+        return Form(f'{cls.source} config',
+            ('gumroad_guid', Input('_gumroad_guid cookie', [validators.required()])),
+            ('gumroad_app_session', Input('_gumroad_app_session cookie', [validators.required()])),
         )
     
-    @classmethod
-    async def setup(cls, session, parameters=None):
-        plugin = await cls.get_plugin(session)
-        
-        # check if everything is ready to use
-        config = hoordu.Dynamic.from_json(plugin.config)
-        
-        # use values from the parameters if they were passed
-        if parameters is not None:
-            config.update(parameters)
-            
-            plugin.config = config.to_json()
-            session.add(plugin)
-        
-        if not config.contains('gumroad_app_session', 'gumroad_guid'):
-            # but if they're still None, the api can't be used
-            return False, cls.config_form()
-            
-        else:
-            # the config contains every required property
-            return True, None
-    
-    @classmethod
-    async def update(cls, session):
-        plugin = await cls.get_plugin(session)
-        
-        if plugin.version < cls.version:
-            # update anything if needed
-            
-            # if anything was updated, then the db entry should be updated as well
-            plugin.version = cls.version
-            session.add(plugin)
+    async def init(self):
+        self.http.cookie_jar.update_cookies({
+            '_gumroad_guid': self.config.gumroad_guid,
+            '_gumroad_app_session': self.config.gumroad_app_session,
+        })
     
     @classmethod
     async def parse_url(cls, url):
-        # TODO what is the id exactly???
         for regexp in PRODUCT_REGEXP:
             match = regexp.match(url)
             if match:
@@ -73,35 +40,8 @@ class Gumroad(SimplePlugin):
         
         return None
     
-    
-    @contextlib.asynccontextmanager
-    async def context(self):
-        async with super().context():
-            self.cookies = {
-                '_gumroad_guid': self.config.gumroad_guid,
-                '_gumroad_app_session': self.config.gumroad_app_session,
-            }
-            
-            async with aiohttp.ClientSession(cookies=self.cookies) as http:
-                self.http: aiohttp.ClientSession = http
-                yield self
-    
-    async def _download_file(self, url):
-        path, resp = await self.session.download(url, cookies=self.cookies)
-        return path
-    
-    async def download(self, id=None, remote_post=None, preview=False):
-        if id is None and remote_post is None:
-            raise ValueError('either id or remote_post must be passed')
-        
-        if remote_post is not None:
-            id = remote_post.original_id
-            metadata = hoordu.Dynamic.from_json(remote_post.metadata_)
-        
-        else:
-            remote_post = await self._get_post(id)
-        
-        account_code, product_code = id.split('.')
+    async def download(self, post_id, post_data=None):
+        account_code, product_code = post_id.split('.')
         main_url = PRODUCT_FORMAT.format(account_code=account_code, product_code=product_code)
         
         async with self.http.get(main_url) as response:
@@ -109,31 +49,20 @@ class Gumroad(SimplePlugin):
             doc = BeautifulSoup(await response.text(), 'html.parser')
         
         post_json = doc.select('script[data-component-name="ProductPage"]')[0].text
-        post = hoordu.Dynamic.from_json(post_json)
+        post_data = Dynamic.from_json(post_json)
         
-        # there's no time in gumroad lmao
-        #create_time = dateutil.parser.parse(post.)
+        post = PostDetails()
+        post.title = post_data.product.name
+        post.url = main_url
+        post.type = PostType.set
+        post.metadata = {'creator': account_code}
         
-        metadata = hoordu.Dynamic()
-        metadata.creator = account_code
+        comment_html = BeautifulSoup(post_data.product.description_html, 'html.parser')
         
-        remote_post.title = post.product.name
-        remote_post.url = main_url
-        remote_post.type = PostType.set
-        remote_post.metadata_ = metadata.to_json()
-        
-        self.log.info(f'downloading post: {remote_post.original_id}')
-        self.log.info(f'local id: {remote_post.id}')
-        
-        remote_post.title = post.product.name
-        
-        comment_html = BeautifulSoup(post.product.description_html, 'html.parser')
-        
-        urls = []
         for a in comment_html.select('a'):
             url = parse_href(main_url, a['href'])
-            urls.append(url)
             
+            post.related.append(url)
             a.replace_with(url)
         
         for br in comment_html.find_all('br'):
@@ -142,62 +71,34 @@ class Gumroad(SimplePlugin):
         for para in comment_html.find_all('p'):
             para.replace_with(para.text + '\n')
         
-        remote_post.comment = comment_html.text
+        post.comment = comment_html.text
         
-        self.session.add(remote_post)
+        post.tags.append(TagDetails(
+            category=TagCategory.artist,
+            tag=account_code,
+            metadata={'name': post_data.product.seller.name}
+        ))
         
-        user_tag = await self._get_tag(TagCategory.artist, account_code)
-        await remote_post.add_tag(user_tag)
         
-        if user_tag.update_metadata('name', post.product.seller.name):
-            self.session.add(user_tag)
-        
-        for url in urls:
-            await remote_post.add_related_url(url)
-        
-        if post.purchase is not None:
+        if post_data.purchase is not None:
             # download files
-            content_url = parse_href(main_url, post.purchase.content_url)
+            content_url = parse_href(main_url, post_data.purchase.content_url)
             async with self.http.get(content_url) as response:
                 response.raise_for_status()
                 doc = BeautifulSoup(await response.text(), 'html.parser')
             
             content_json = doc.select('script[data-component-name="DownloadPageWithContent"]')[0].text
-            content = hoordu.Dynamic.from_json(content_json)
-            
-            files = await remote_post.awaitable_attrs.files
-            current_files = {file.metadata_: file for file in files}
+            content: Dynamic = Dynamic.from_json(content_json)
             
             for item, order in zip(content.content.content_items, itertools.count(1)):
                 if item.type == 'file':
-                    # item.id -> metadata
-                    id = item.id
-                    file = current_files.get(id)
-                    filename = f'{item.file_name}.{item.extension.lower()}'
-                    
-                    if file is None:
-                        file = File(remote=remote_post, remote_order=order, filename=filename, metadata_=id)
-                        self.session.add(file)
-                        await self.session.flush()
-                        
-                    else:
-                        file.remote_order = order
-                        file.filename = filename
-                        self.session.add(file)
-                    
-                    need_orig = not file.present and not preview
-                    if need_orig:
-                        self.log.info(f'downloading file: {file.remote_order}')
-                        
-                        download_url = parse_href(content_url, item.download_url)
-                        orig = await self._download_file(download_url)
-                        
-                        await self.session.import_file(file, orig=orig, move=True)
-                        if file.mime == 'text/html':
-                            raise Exception(file.mime)
+                    post.files.append(FileDetails(
+                        url=parse_href(content_url, item.download_url),
+                        filename=f'{item.file_name}.{item.extension.lower()}',
+                        order=order,
+                        identifier=item.id,
+                    ))
         
-        return remote_post
+        return post
 
 Plugin = Gumroad
-
-

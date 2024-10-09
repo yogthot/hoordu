@@ -4,6 +4,6 @@ import asyncio
 
 if __name__ == '__main__':
     conf = hoordu.load_config()
-    conf.debug = True
+    conf.settings.debug = True
     asyncio.run(hoordu.hoordu.create_all(conf))
 

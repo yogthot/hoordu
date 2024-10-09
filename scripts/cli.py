@@ -7,12 +7,15 @@ from datetime import datetime, timedelta, timezone
 
 import hoordu
 from hoordu.models import *
-from hoordu.plugins import FetchDirection
 from hoordu.forms import *
 from hoordu.oauth.server import OAuthServer
+from hoordu.plugins.wrapper import PluginWrapper
 
 from sqlalchemy.orm import selectinload
 from sqlalchemy.exc import IntegrityError
+
+from typing import Optional
+import contextlib
 
 
 def fail(error):
@@ -91,14 +94,14 @@ async def parse_url(hrd, arg, args):
     
     source = args.source
     if args.plugin_id is None and args.source is None:
-        sources = {plugins[0][0].name}
+        sources = {plugins[0][0].source}
         for p, _ in plugins:
-            if p.name not in sources:
+            if p.source not in sources:
                 fail(f'multiple sources can download: {arg}')
         
         source = sources.pop()
     
-    plugins = [(p, o) for p, o in plugins if p.name == source]
+    plugins = [(p, o) for p, o in plugins if p.source == source]
     if len(plugins) == 0:
         fail(f'no plugin for source \'{args.source}\' can download url: {arg}')
     
@@ -220,6 +223,7 @@ async def _cli_form(form):
     if isinstance(form, OAuthForm):
         print('Please visit the following url and authorize to continue.')
         print(form.url)
+        # TODO the redirect uri should be "generic"
         oauth_server = OAuthServer(8941)
         path, params = await oauth_server.wait_for_request()
         
@@ -228,38 +232,31 @@ async def _cli_form(form):
         return
     
     for entry in form.entries:
-        if isinstance(entry, Section):
-            print(f'-- {entry.label} ----------')
+        if entry.errors:
+            for error in entry.errors:
+                print(f'error: {error}')
+            
+        if isinstance(entry, Label):
+            print(entry.label)
             print()
-            await _cli_form(entry)
-            print('--------------' + '-' * len(entry.label))
-        
+            
+        elif isinstance(entry, PasswordInput):
+            value = getpass('{entry.label}: ')
+            if value: entry.value = value
+            
+        elif isinstance(entry, ChoiceInput):
+            print(f'{entry.label}:')
+            for k, v in entry.choices:
+                print(f'    {k}: {v}')
+            value = input('pick a choice: ')
+            if value: entry.value = value
+            
+        elif isinstance(entry, Input):
+            value = input(f'{entry.label}: ')
+            if value: entry.value = value
+            
         else:
-            if entry.errors:
-                for error in entry.errors:
-                    print(f'error: {error}')
-                
-            if isinstance(entry, Label):
-                print(entry.label)
-                print()
-                
-            elif isinstance(entry, PasswordInput):
-                value = getpass('{entry.label}: ')
-                if value: entry.value = value
-                
-            elif isinstance(entry, ChoiceInput):
-                print(f'{entry.label}:')
-                for k, v in entry.choices:
-                    print(f'    {k}: {v}')
-                value = input('pick a choice: ')
-                if value: entry.value = value
-                
-            elif isinstance(entry, Input):
-                value = input(f'{entry.label}: ')
-                if value: entry.value = value
-                
-            else:
-                print()
+            print()
 
 async def cli_form(form):
     await _cli_form(form)
@@ -288,7 +285,7 @@ async def setup_plugin(hrd, id):
             await cli_form(form)
         
         else:
-            fail('something went wrong with the plugin setup')
+            return fail('something went wrong with the plugin setup')
 
 
 async def safe_dl(args, session, plugin_id, post_id):
@@ -318,24 +315,23 @@ async def safe_dl(args, session, plugin_id, post_id):
                 await session.rollback()
                 return None
 
-async def safe_fetch(args, session, plugin, subscription, direction, num_posts):
+async def safe_fetch(args, session, plugin: PluginWrapper, subscription: Subscription, direction: bool, num_posts: Optional[int] = None):
     posts = {}
-    iterator = None
     
     while True:
         try:
-            if iterator is None:
-                iterator = await plugin.create_iterator(subscription, direction=direction, num_posts=num_posts)
+            if direction:
+                iterator = plugin.update(subscription)
+            else:
+                iterator = plugin.fetch(subscription)
             
-            async for remote_post in iterator:
-                posts[remote_post.id] = remote_post
+            async with contextlib.aclosing(iterator) as it:
+                async for remote_post in it:
+                    posts[remote_post.id] = remote_post
+                    if num_posts is not None and len(posts) >= num_posts:
+                        break
             
-            # update subscription updated_time
-            #await session.refresh(subscription)
-            subscription.updated_time = datetime.now(timezone.utc)
-            session.add(subscription)
             await session.commit()
-            
             return posts
             
         except Exception as e:
@@ -376,7 +372,7 @@ async def safe_fetch(args, session, plugin, subscription, direction, num_posts):
 async def process_sub(session, plugin_id, options):
     plugin = await session.plugin(plugin_id)
     
-    details = await plugin.get_search_details(options)
+    details = await plugin.probe_query(options)
     
     if details is not None:
         description = details.description or ''
@@ -400,7 +396,7 @@ related:
             sys.exit(0)
     
     try:
-        return await plugin.subscribe(sub_name, options=options, details=details)
+        return await plugin.subscribe(sub_name, options)
         
     except IntegrityError:
         await session.rollback()
@@ -412,10 +408,10 @@ related:
         
         print()
         if is_name_conflict:
-            fail('a subscription with the same name already exists')
+            return fail('a subscription with the same name already exists')
             
         else:
-            fail(f'this subscription already exists {options}')
+            return fail(f'this subscription already exists {options}')
 
 async def main():
     argc = len(sys.argv)
@@ -430,6 +426,7 @@ async def main():
         return
     
     hrd = hoordu.hoordu(config)
+    await hrd.reload_plugins()
     
     args = await parse_args(hrd)
     
@@ -503,7 +500,7 @@ async def main():
                 if sub.enabled:
                     print(f'getting all new posts for subscription \'{sub.name}\' ({i}/{total})')
                     plugin = await session.plugin((await sub.awaitable_attrs.plugin).name)
-                    await safe_fetch(args, session, plugin, sub, FetchDirection.newer, None)
+                    await safe_fetch(args, session, plugin, sub, true, None)
                     await session.commit()
             
         elif args.command in ('update', 'fetch', 'rfetch'):
@@ -528,9 +525,9 @@ async def main():
                         .one_or_none()
             
             if sub is None:
-                fail(f'subscription \'{args.subscription}\' doesn\'t exist')
+                return fail(f'subscription \'{args.subscription}\' doesn\'t exist')
             
-            direction = FetchDirection.older if args.command == 'fetch' else FetchDirection.newer
+            direction = False if args.command == 'fetch' else True
             
             plugin = await session.plugin((await sub.awaitable_attrs.plugin).name)
             await safe_fetch(args, session, plugin, sub, direction, args.num_posts)
@@ -558,7 +555,7 @@ async def main():
                 plugin, id = args.urls[0]
                 
                 if not isinstance(id, str):
-                    fail('failed to parse post url')
+                    return fail('failed to parse post url')
                 
                 post = await session.select(RemotePost) \
                         .options(selectinload(RemotePost.files)) \
@@ -574,11 +571,11 @@ async def main():
                         .one_or_none()
             
             if post is None:
-                fail('post does not exist')
+                return fail('post does not exist')
             
             if args.command == 'info':
                 if plugin:
-                    print(f'plugin: {plugin.name}')
+                    print(f'plugin: {plugin.source}')
                 print(f'local id: {post.id}')
                 print(f'original id: {post.original_id}')
                 

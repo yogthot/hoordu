@@ -17,7 +17,7 @@ __all__ = [
 ]
 
 class HoorduConfig:
-    PLUGIN_FILE_REGEX = re.compile('^(?P<plugin_id>[^\.]+)\.py$', re.IGNORECASE)
+    PLUGIN_FILE_REGEX = re.compile(r'^(?P<plugin_id>[^\.]+)\.py$', re.IGNORECASE)
     
     def __init__(self, home):
         self.home: Path = Path(home)
@@ -74,8 +74,14 @@ def load_config() -> HoorduConfig:
     if env_path is not None:
         paths.append(Path(env_path).expanduser().resolve())
     
+    xdg_config_home = os.environ.get('XDG_CONFIG_HOME', None)
+    if xdg_config_home is not None:
+        user_config_path = Path(xdg_config_home)
+    else:
+        user_config_path = Path('~/.config').expanduser().resolve()
+    
     paths.extend([
-        Path('~/.config/hoordu').expanduser().resolve(),
+        user_config_path / 'hoordu',
         Path('/etc/hoordu').resolve(),
     ])
     
