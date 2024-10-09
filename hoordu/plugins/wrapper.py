@@ -207,7 +207,7 @@ class PluginWrapper:
                         raise Exception(f'unable to download file url: {url}')
                 
                 if orig is not None:
-                    await self.session.import_file(file, orig=orig, move=is_move)
+                    await self.session.import_file(file, orig, move=is_move)
         
         remote_post.favorite = post_details.is_favorite
         remote_post.hidden = post_details.is_hidden

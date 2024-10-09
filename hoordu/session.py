@@ -5,6 +5,7 @@ import pathlib
 import shutil
 import os
 from typing import Optional
+import logging
 
 from sqlalchemy import select
 
@@ -14,11 +15,13 @@ from .models.sql import SqlStatement
 from .util import *
 from .plugins import *
 from .plugins.wrapper import PluginWrapper
+from .thumbnailers import generate_thumbnail
 
 
 class HoorduSession:
     def __init__(self, hoordu):
         self.hoordu = hoordu
+        self.log: logging.Logger = hoordu.log
         self.raw = hoordu._sessionmaker()
         self.priority = hoordu._sessionmaker()
         self._plugins: dict[str, PluginWrapper] = {}
@@ -136,40 +139,40 @@ class HoorduSession:
     
     async def import_file(self,
         file: File,
-        orig: Optional[str] = None,
-        thumb: Optional[str] = None,
+        path: str,
         move: bool = False
     ) -> None:
         mvfun: Callable[[str, str], Awaitable[None]] = wrap_async(shutil.move if move else shutil.copy)
         
-        if orig is not None:
-            file.hash = await md5(orig)
-            file.mime = await mime_from_file(orig)
-            suffixes = pathlib.Path(orig).suffixes
-            if len(suffixes):
-                file.ext = suffixes[-1][1:20]
-            else:
-                file.ext = None
+        file.hash = await md5(path)
+        file.mime = await mime_from_file(path)
+        suffixes = pathlib.Path(path).suffixes
+        if len(suffixes):
+            file.ext = suffixes[-1][1:20]
+        else:
+            file.ext = None
         
-        if thumb is not None:
-            suffixes = pathlib.Path(thumb).suffixes
-            if len(suffixes):
-                file.thumb_ext = suffixes[-1][1:20]
-            else:
-                file.thumb_ext = None
+        file.thumb_ext = 'jpg'
         
         dst, tdst = self.hoordu.get_file_paths(file)
         
-        if orig is not None:
-            await mkpath(pathlib.Path(dst).parent)
-            await mvfun(orig, dst)
-            os.chmod(dst, self.hoordu.config.settings.perms)
-            file.present = True
-            self.add(file)
+        await mkpath(pathlib.Path(dst).parent)
+        await mvfun(path, dst)
+        os.chmod(dst, self.hoordu.config.settings.perms)
+        file.present = True
         
-        if thumb is not None:
-            await mkpath(pathlib.Path(tdst).parent)
-            await mvfun(thumb, tdst)
+        await mkpath(pathlib.Path(tdst).parent)
+        has_thumbnail = False
+        try:
+            has_thumbnail = await generate_thumbnail(dst, tdst, file.mime)
+            
+        except Exception as e:
+            self.log.exception('failed to generate a thumbnail')
+            pass
+        
+        if has_thumbnail:
             os.chmod(tdst, self.hoordu.config.settings.perms)
             file.thumb_present = True
-            self.add(file)
+        
+        self.add(file)
+        await self.commit()

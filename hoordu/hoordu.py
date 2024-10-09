@@ -40,12 +40,12 @@ class hoordu:
         self._sessionmaker = sessionmaker(
             self.engine, expire_on_commit=False, class_=AsyncSession
         )
-        self._session: HoorduSession = HoorduSession(self)
         
         # global initializer
         configure_logger('hoordu', self.settings.get('log_file'))
-        
         self.log: logging.Logger = logging.getLogger('hoordu.hoordu')
+        
+        self._session: HoorduSession = HoorduSession(self)
         
         self._plugins: dict[str, Type[PluginBase]] = dict()
         
