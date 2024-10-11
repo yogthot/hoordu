@@ -406,7 +406,7 @@ class Subscription(Base):
         if 'flags' not in kwargs:
             self.flags = SubscriptionFlags.enabled
     
-    async def add_post(self, post: RemotePost, sort_index=None) -> bool:
+    async def add_post(self, post: RemotePost, sort_index: Optional[int] = None) -> bool:
         if sort_index is None:
             try:
                 sort_index = int(post.original_id)

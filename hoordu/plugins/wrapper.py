@@ -138,7 +138,7 @@ class PluginWrapper:
         remote_post.type = post_details.type or PostType.set
         
         if post_details.title is not None:
-            remote_post.comment = post_details.title
+            remote_post.title = post_details.title
         if post_details.comment is not None:
             remote_post.comment = post_details.comment
         if post_details.post_time is not None:

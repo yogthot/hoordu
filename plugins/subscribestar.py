@@ -26,6 +26,8 @@ class SubStar(PluginBase):
     @classmethod
     def config_form(cls):
         return Form(f'{cls.source} config',
+            ('user_agent', Input('User Agent', [validators.required()])),
+            ('browser_id', Input('_browser_id cookie', [validators.required()])),
             ('personalization_id', Input('_personalization_id cookie', [validators.required()])),
             ('subscribestar_session', Input('_subscribestar_session cookie', [validators.required()])),
             ('auth_tracker_code', Input('auth_tracker_code cookie', [validators.required()])),
@@ -41,6 +43,7 @@ class SubStar(PluginBase):
     
     async def init(self):
         self.http.headers.update({
+            'User-Agent': self.config.user_agent,
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
             'Accept-Language': 'en-US,en;q=0.5',
             'Cache-Control': 'no-cache',
@@ -52,6 +55,7 @@ class SubStar(PluginBase):
             'Upgrade-Insecure-Requests': '1',
         })
         self.http.cookie_jar.update_cookies({
+            '_browser_id': self.config.browser_id,
             '_personalization_id': self.config.personalization_id,
             '_subscribestar_session': self.config.subscribestar_session,
             'auth_tracker_code': self.config.auth_tracker_code,
@@ -113,6 +117,8 @@ class SubStar(PluginBase):
         post_date = self._get_text(post_data, '.post-date')
         if post_date is None:
             post_date = self._get_text(post_data, '.section-subtitle')
+        if post_date is None:
+            post_date = self._get_text(post_data, '.section-title .star_link-types')
         
         post.post_time = dateutil.parser.parse(post_date).replace(tzinfo=None)
         
@@ -226,6 +232,7 @@ class SubStar(PluginBase):
             return self._convert_post(url, post_data)
             
         else:
+            self.log.warning('inaccessible post %s', id)
             return self._convert_hidden_post(url, post_data)
     
     async def probe_query(self, query):

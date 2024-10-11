@@ -103,6 +103,7 @@ class Fanbox(PluginBase):
         
         if not post_data.isRestricted:
             if post_data.type == 'image':
+                post.comment = post_data.body.text
                 
                 for image, order in zip(post_data.body.images, itertools.count(1)):
                     post.files.append(FileDetails(
