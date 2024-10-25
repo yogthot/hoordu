@@ -159,8 +159,6 @@ class Fanbox(PluginBase):
                             'metadata': file_id
                         })
                         
-                        order += 1
-                        
                     elif block.type == 'file':
                         file_id = f'f-{block.fileId}'
                         post.files.append(FileDetails(
@@ -175,8 +173,6 @@ class Fanbox(PluginBase):
                             'type': 'file',
                             'metadata': file_id
                         })
-                        
-                        order += 1
                         
                     elif block.type == 'embed':
                         embed = embedmap[block.embedId]

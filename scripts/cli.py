@@ -500,7 +500,7 @@ async def main():
                 if sub.enabled:
                     print(f'getting all new posts for subscription \'{sub.name}\' ({i}/{total})')
                     plugin = await session.plugin((await sub.awaitable_attrs.plugin).name)
-                    await safe_fetch(args, session, plugin, sub, true, None)
+                    await safe_fetch(args, session, plugin, sub, True, None)
                     await session.commit()
             
         elif args.command in ('update', 'fetch', 'rfetch'):

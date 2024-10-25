@@ -120,6 +120,7 @@ class PostFlags(IntFlag):
     favorite = auto()
     hidden = auto()
     removed = auto() # if the post was deleted in the remote host
+    complete = auto() # if everything about this post has been downloaded (e.g.: when a file failed to download, or the user doesn't have access to the post)
 
 class Post(Base, MetadataHelper):
     __tablename__ = 'post'
@@ -146,6 +147,7 @@ class Post(Base, MetadataHelper):
     favorite = FlagProperty('flags', PostFlags.favorite)
     hidden = FlagProperty('flags', PostFlags.hidden)
     removed = FlagProperty('flags', PostFlags.removed)
+    complete = FlagProperty('flags', PostFlags.complete)
     
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -260,6 +262,7 @@ class RemotePost(Base, MetadataHelper):
     favorite = FlagProperty('flags', PostFlags.favorite)
     hidden = FlagProperty('flags', PostFlags.hidden)
     removed = FlagProperty('flags', PostFlags.removed)
+    complete = FlagProperty('flags', PostFlags.complete)
     
     __table_args__ = (
         Index('idx_remote_posts', 'source_id', 'original_id', unique=True),

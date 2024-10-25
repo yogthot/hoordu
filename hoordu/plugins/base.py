@@ -72,6 +72,7 @@ class PostDetails:
     is_favorite: bool = False
     is_hidden: bool = False
     is_removed: bool = False
+    is_complete: bool = True
     
     # hack until I find a better way to do this
     _omit_id: bool = False

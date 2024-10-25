@@ -13,6 +13,7 @@ class Unzip:
             '7z', 'l',
             '-slt',
             '-ba',
+            '-p',
             self.archive
         )
         

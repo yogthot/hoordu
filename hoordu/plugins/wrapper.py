@@ -176,7 +176,7 @@ class PluginWrapper:
                     metadata_=file_details.metadata
                 )
                 self.session.add(file)
-                await self.session.flush()
+                await self.session.commit()
             
             file.filename = file_details.filename
             
@@ -187,8 +187,9 @@ class PluginWrapper:
                 url = yarl.URL(file_details.url)
                 match url.scheme:
                     case 'file':
-                        self.log.info(f'copying file {file.remote_order}: {url.path}')
-                        orig = url.path
+                        print(file_details.url)
+                        orig = file_details.url[len('file://'):]
+                        self.log.info(f'copying file {file.remote_order}: {orig}')
                         is_move = False
                         
                     case 'http' | 'https':
@@ -208,10 +209,7 @@ class PluginWrapper:
                 
                 if orig is not None:
                     await self.session.import_file(file, orig, move=is_move)
-        
-        remote_post.favorite = post_details.is_favorite
-        remote_post.hidden = post_details.is_hidden
-        remote_post.removed = post_details.is_removed
+                    await self.session.commit()
         
         existing_related = await remote_post.awaitable_attrs.related
         for url in post_details.related:
@@ -226,6 +224,13 @@ class PluginWrapper:
                 
                 if not any(r.remote_id == related_post.id for r in existing_related):
                     self.session.add(Related(related_to=remote_post, remote=related_post))
+        
+        remote_post.favorite = post_details.is_favorite
+        remote_post.hidden = post_details.is_hidden
+        remote_post.removed = post_details.is_removed
+        
+        # only mark as complete in the end in case something else fails
+        remote_post.complete = post_details.is_complete
         
         self.session.add(remote_post)
         return remote_post
@@ -296,8 +301,10 @@ class PluginWrapper:
             state = Dynamic.from_json(subscription.state)
             if not is_head:
                 begin_at = state.get('tail_id')
+                if isinstance(begin_at, str): begin_at = int(begin_at)
             else:
                 end_at = state.get('head_id')
+                if isinstance(end_at, str): end_at = int(end_at)
             
             custom_state = state.get('custom')
             if custom_state is None:
@@ -308,6 +315,11 @@ class PluginWrapper:
             iterator = self.instance.iterate_query(query, custom_state, begin_at=begin_at)
             async with contextlib.aclosing(iterator) as it:
                 async for sort_index, post_id, post_data in it:
+                    if not is_head:
+                        self.log.info('iterating %s(id %s)', sort_index, post_id, begin_at)
+                    else:
+                        self.log.info('iterating %s(id %s) until %s', sort_index, post_id, end_at)
+                    
                     if end_at is not None and sort_index <= end_at:
                         break
                     
@@ -317,13 +329,13 @@ class PluginWrapper:
                     remote_post = None
                     if post_id is not None:
                         exists, remote_post = await self._get_post(post_id)
-                        #if not exists:
-                        post_details = await self.instance.download(post_id, post_data)
-                        post = await self._convert_post(remote_post, post_details)
-                        
                         if subscription is not None:
                             await subscription.add_post(remote_post, int(sort_index))
                             await self.session.commit()
+                        
+                        if not remote_post.complete:
+                            post_details = await self.instance.download(post_id, post_data)
+                            remote_post = await self._convert_post(remote_post, post_details)
                     
                     if is_first:
                         is_first = False
@@ -336,6 +348,7 @@ class PluginWrapper:
             
         except:
             exc = True
+            raise
             
         finally:
             if subscription is not None:

@@ -173,6 +173,9 @@ class HoorduSession:
         if has_thumbnail:
             os.chmod(tdst, self.hoordu.config.settings.perms)
             file.thumb_present = True
+            
+        else:
+            file.thumb_ext = None
         
         self.add(file)
         await self.commit()

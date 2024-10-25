@@ -34,7 +34,7 @@ class Filesystem(PluginBase):
         
         if path.is_file():
             filename = path.name
-            post.files.append(FileDetails(order=0, url=f'file://${path}', filename=filename))
+            post.files.append(FileDetails(order=0, url=f'file://{path}', filename=filename))
             return post
             
         elif path.is_dir():
@@ -42,7 +42,7 @@ class Filesystem(PluginBase):
             for p in _ordered_walk(path):
                 if p.is_file():
                     filename = str(p.relative_to(path))
-                    post.files.append(FileDetails(order=order, url=f'file://${p}', filename=filename))
+                    post.files.append(FileDetails(order=order, url=f'file://{p}', filename=filename))
                     order += 1
             
             return post
