@@ -120,13 +120,16 @@ class Nijie(PluginBase):
             response.raise_for_status()
             popup = BeautifulSoup(await response.text(), 'html.parser')
         
-        files = popup.select('#img_window a > img')
+        files = popup.select('#img_window a > *')
         if len(files) != len(post_files):
             raise APIError(f'inconsistent files, please review the scraper ({len(files)}, {len(post_files)})')
         
         for file, order in zip(files, itertools.count(1)):
+            tag = file.name.lower()
+            if tag not in ('img', 'video'):
+                raise APIError(f'unknown file type: {tag}')
+            
             orig_url = parse_href(page_url, file['src'])
-            #thumb_url = orig_url.replace('/nijie/', '/__rs_l120x120/nijie/')
             
             post.files.append(FileDetails(
                 url=orig_url,
