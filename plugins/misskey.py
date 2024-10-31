@@ -13,7 +13,7 @@ NOTE_REGEXP = [
 ]
 TIMELINE_REGEXP = re.compile(r'^https?:\/\/misskey\.io\/@(?P<user>[^\/]+)(?:\/(?P<type>[^\/]+)?)?(?:\?.*)?$', flags=re.IGNORECASE)
 
-PAGE_LIMIT = 30
+PAGE_LIMIT = 10
 
 
 def str_base(number, base='0123456789abcdefghijklmnopqrstuvwxyz'):
@@ -183,7 +183,14 @@ class Misskey(PluginBase):
                 'limit': PAGE_LIMIT,
                 'i': self.config.token,
                 'excludeNsfw': False,
+                'allowPartial': True,
             }
+            if query.method == 'notes':
+                request['withRenotes'] = False
+                request['withReplies'] = False
+                request['withFiles'] = True
+                request['withChannelNotes'] = True
+            
             if until_id is not None:
                 request['untilId'] = until_id
             
