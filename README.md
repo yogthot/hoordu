@@ -9,11 +9,6 @@ Ideally hoordu should communicate with downloader plugins to get the content fro
 
 ## TODO
 
-- thumbnail generation
-- plugin refactor
-    - stop interacting with database/models directly
-    - don't download thumbnails
-    - generate thumbnails as file is added to the database (if a thumbnailer is available)
 - full text search
 
 

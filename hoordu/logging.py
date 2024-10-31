@@ -62,14 +62,14 @@ def configure_logger(basename, filename_format, level=logging.INFO):
     formatter = logging.Formatter('[%(asctime)s] %(name)s | %(levelname)s | %(message)s', '%Y-%m-%d %H:%M:%S')
     
     console = logging.StreamHandler()
-    console.setLevel(level)
+    console.setLevel(logging.DEBUG)
     console.setFormatter(formatter)
     console.addFilter(LoggingParentFilter())
     
     logger.addHandler(console)
     
     file = ParentHandler(filename_format)
-    file.setLevel(logging.DEBUG)
+    file.setLevel(level)
     file.setFormatter(formatter)
     file.addFilter(LoggingParentFilter())
     

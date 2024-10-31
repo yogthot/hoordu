@@ -184,16 +184,17 @@ class PluginWrapper:
                 orig = None
                 is_move = False
                 
+                self.log.info(f'found new file {file.remote_order}: {file.remote_identifier}')
                 url = yarl.URL(file_details.url)
                 match url.scheme:
                     case 'file':
                         print(file_details.url)
                         orig = file_details.url[len('file://'):]
-                        self.log.info(f'copying file {file.remote_order}: {orig}')
+                        self.log.debug(f'copying file: {orig}')
                         is_move = False
-                        
+                    
                     case 'http' | 'https':
-                        self.log.info(f'downloading file {file.remote_order}: {url}')
+                        self.log.debug(f'downloading file: {url}')
                         async with self.http.get(file_details.url) as resp:
                             orig = await save_response(resp, suffix=file_details.filename)
                         is_move = True
@@ -201,7 +202,6 @@ class PluginWrapper:
                     case 'data':
                         path = save_data_uri(file_details.url)
                         is_move = True
-                        pass
                     
                     case _:
                         self.log.warning(f'unknown scheme: {url.scheme}')
@@ -316,7 +316,7 @@ class PluginWrapper:
             async with contextlib.aclosing(iterator) as it:
                 async for sort_index, post_id, post_data in it:
                     if not is_head:
-                        self.log.info('iterating %s(id %s)', sort_index, post_id, begin_at)
+                        self.log.info('iterating %s(id %s)', sort_index, post_id)
                     else:
                         self.log.info('iterating %s(id %s) until %s', sort_index, post_id, end_at)
                     
