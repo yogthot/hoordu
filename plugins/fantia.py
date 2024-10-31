@@ -107,7 +107,7 @@ class Fantia(PluginBase):
         
         if content_data.category == 'file':
             post.files.append(FileDetails(
-                url=content_data.download_uri,
+                url=parse_href(post.url, content_data.download_uri),
                 filename=content_data.filename,
                 order=0
             ))
@@ -115,7 +115,7 @@ class Fantia(PluginBase):
         elif content_data.category == 'photo_gallery':
             for order, photo in enumerate(content_data.post_content_photos):
                 post.files.append(FileDetails(
-                    url=photo.url.original,
+                    url=parse_href(post.url, photo.url.original),
                     identifier=str(photo.id),
                     order=order
                 ))
@@ -247,7 +247,7 @@ class Fantia(PluginBase):
             ))
         
         post.files.append(FileDetails(
-            url=post_data.thumb.original,
+            url=parse_href(post.url, post_data.thumb.original),
             order=0
         ))
         
