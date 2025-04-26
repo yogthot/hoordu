@@ -41,6 +41,8 @@ class PluginWrapper:
         self.instance: PluginBase
         self.http: aiohttp.ClientSession
     
+    
+    
     async def get_source(self, session) -> Source:
         stream = await session.stream(
                 select(Source) \
@@ -163,9 +165,14 @@ class PluginWrapper:
             order = file_details.order if file_details.order is not None else i
             if file_details.identifier is not None:
                 file = by_identifier.get(file_details.identifier)
+                if file is not None:
+                    file.remote_order = file_details.order
+                    file.filename = file_details.filename
                 
             else:
                 file = by_order.get(file_details.order)
+                if file is not None:
+                    file.filename = file_details.filename
             
             if file is None:
                 file = File(
@@ -178,7 +185,7 @@ class PluginWrapper:
                 self.session.add(file)
                 await self.session.commit()
             
-            file.filename = file_details.filename
+            self.session.add(file)
             
             if not file.present:
                 orig = None
@@ -195,7 +202,7 @@ class PluginWrapper:
                     
                     case 'http' | 'https':
                         self.log.debug(f'downloading file: {url}')
-                        async with self.http.get(file_details.url) as resp:
+                        async with self.http.get(file_details.url, timeout=aiohttp.ClientTimeout(total=None)) as resp:
                             orig = await save_response(resp, suffix=file_details.filename)
                         is_move = True
                     
@@ -363,7 +370,8 @@ class PluginWrapper:
                 state.custom = custom_state
                 
                 subscription.state = state.to_json()
-                subscription.updated_time = datetime.now(timezone.utc)
+                if not exc:
+                    subscription.updated_time = datetime.now(timezone.utc)
                 self.session.add(subscription)
             
             await self.session.commit()

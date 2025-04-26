@@ -39,7 +39,9 @@ class Patreon(PluginBase):
     @classmethod
     def config_form(cls):
         return Form(f'{cls.source} config',
-            ('session_id', Input('session_id cookie', [validators.required()]))
+            ('session_id', Input('session_id cookie', [validators.required()])),
+            ('user_agent', Input('User Agent', [])),
+            ('cf_clearance', Input('cf_clearance cookie', []))
         )
     
     @classmethod
@@ -60,10 +62,13 @@ class Patreon(PluginBase):
             'Sec-Fetch-Mode': 'no-cors',
             'Sec-Fetch-Site': 'same-origin',
             'TE': 'trailers',
+            'User-Agent': self.config.get('user_agent'),
         })
         self.http._cookie_jar.update_cookies({
-            'session_id': self.config.session_id
+            'session_id': self.config.session_id,
+            'cf_clearance': self.config.get('cf_clearance')
         })
+        
     
     @classmethod
     async def parse_url(cls, url):
@@ -92,6 +97,7 @@ class Patreon(PluginBase):
             
             async with self.http.get(f'https://www.patreon.com/api/posts/{post_id}', params=params) as response:
                 response.raise_for_status()
+                #print(await response.text())
                 json = Dynamic.from_json(await response.text())
             
             post_obj = json.data
@@ -100,8 +106,11 @@ class Patreon(PluginBase):
         else:
             post_obj, included = post_data
         
-        
         post_attr = post_obj.attributes
+        
+        if 'current_user_has_liked' not in post_attr:
+            raise APIError('inaccessible post')
+        
         post_id = post_obj.id
         
         user = included[post_obj.relationships.user.data]
@@ -183,18 +192,25 @@ class Patreon(PluginBase):
         except Exception:
             media = []
         
-        media = [x for x in media if x.id in content_images]
-        
         audio = []
         audio_data = post_obj.relationships.audio.data
         if audio_data is not None:
             audio = [audio_data]
         
-        # remove duplicates
-        #all_content = images + audio + attachments + media
-        #filtered_content = [Dynamic(x) for x in list(set(tuple(d.items()) for d in all_content))]
+        #
+        all_content = images + audio + attachments + media
         
-        for data, order in zip(itertools.chain(images, audio, attachments, media), itertools.count(1)):
+        # remove duplicates
+        filtered_content = []
+        seen = set()
+        for c in all_content:
+            key = (c.type, c.id)
+            if key not in seen:
+                seen.add(key)
+                
+                filtered_content.append(c)
+        
+        for data, order in zip(filtered_content, itertools.count(1)):
             attributes = included[data].attributes
             
             filename = None
@@ -206,8 +222,8 @@ class Patreon(PluginBase):
                 
             elif data.type == 'media':
                 # skip not ready images for now
-                if attributes.state != 'ready':
-                    continue
+                #if attributes.state != 'ready':
+                #    continue
                 
                 # skip embeded image, url has been saved instead
                 if post_attr.post_type == 'link' and attributes.owner_relationship == 'main':

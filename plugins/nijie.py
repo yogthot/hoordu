@@ -120,7 +120,7 @@ class Nijie(PluginBase):
             response.raise_for_status()
             popup = BeautifulSoup(await response.text(), 'html.parser')
         
-        files = popup.select('#img_window a > *')
+        files = popup.select('#img_window a > *:not(.view_filter)')
         if len(files) != len(post_files):
             raise APIError(f'inconsistent files, please review the scraper ({len(files)}, {len(post_files)})')
         

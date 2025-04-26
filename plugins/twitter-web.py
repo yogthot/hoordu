@@ -1,6 +1,7 @@
 import re
 import dateutil.parser
 import json
+import yarl
 
 from hoordu.dynamic import Dynamic
 from hoordu.models import *
@@ -12,7 +13,7 @@ DOMAIN = 'x.com'
 TWEET_DETAIL_URL = f'https://{DOMAIN}/i/api/graphql/Pn68XRZwyV9ClrAEmK8rrQ/TweetDetail'
 USER_BY_ID = f'https://{DOMAIN}/i/api/graphql/8slyDObmnUzBOCu7kYZj_A/UserByRestId'
 USER_BY_SCREENNAME = f'https://{DOMAIN}/i/api/graphql/qRednkZG-rn1P6b48NINmQ/UserByScreenName'
-TIMELINE_URL = f'https://{DOMAIN}/i/api/graphql/nozbAzcOZmXPohAtWJJHZQ/UserTweetsAndReplies'
+TIMELINE_URL = f'https://{DOMAIN}/i/api/graphql/OAx9yEcW3JA9bPo63pcYlA/UserTweetsAndReplies'
 MEDIATIMELINE_URL = f'https://{DOMAIN}/i/api/graphql/Az0-KW6F-FyYTc2OJmvUhg/UserMedia'
 LIKES_URL = f'https://{DOMAIN}/i/api/graphql/kgZtsNyE46T3JaEf2nF9vw/Likes'
 
@@ -34,7 +35,7 @@ THUMB_SIZE = 'small'
 ORIG_SIZE = 'orig'
 PROFILE_THUMB_SIZE = '200x200'
 
-PAGE_LIMIT = 40
+PAGE_LIMIT = 20
 
 
 class Twitter(PluginBase):
@@ -86,6 +87,23 @@ class Twitter(PluginBase):
         return None
     
     async def init(self):
+        # transaction id hacks
+        import requests
+        from x_client_transaction.utils import handle_x_migration
+        from x_client_transaction import ClientTransaction
+        headers = {"Authority": "x.com",
+           "Accept-Language": "en-US,en;q=0.9",
+           "Cache-Control": "no-cache",
+           "Referer": "https://x.com",
+           "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36",
+           "X-Twitter-Active-User": "yes",
+           "X-Twitter-Client-Language": "en"}
+        session = requests.Session()
+        session.headers = headers
+        response = handle_x_migration(session)
+        self.ct = ClientTransaction(response)
+        #
+        
         self.http.headers.update({
             'Accept': '*/*',
             'Accept-Language': 'en-US,en;q=0.5',
@@ -138,7 +156,11 @@ class Twitter(PluginBase):
             'features': json.dumps(features),
         }
         
-        async with self.http.get(TWEET_DETAIL_URL, params=params) as resp:
+        url = TWEET_DETAIL_URL
+        headers = {
+            'x-client-transaction-id': self.ct.generate_transaction_id('GET', yarl.URL(url).path),
+        }
+        async with self.http.get(url, params=params, headers=headers) as resp:
             body = Dynamic.from_json(await resp.text())
         
         instructions = body.data.threaded_conversation_with_injections_v2.instructions
@@ -298,7 +320,10 @@ class Twitter(PluginBase):
             'features': json.dumps(features),
         }
         
-        async with self.http.get(url, params=params) as resp:
+        headers = {
+            'x-client-transaction-id': self.ct.generate_transaction_id('GET', yarl.URL(url).path),
+        }
+        async with self.http.get(url, params=params, headers=headers) as resp:
             body = Dynamic.from_json(await resp.text())
         
         user = body.get_path('data', 'user', 'result')
@@ -398,7 +423,7 @@ class Twitter(PluginBase):
             self.log.info('getting next page')
             is_media = False
             if query.method == 'tweets':
-                # TODO when changing backt to _get_timeline, need to handle pinned tweets
+                # TODO when changing back to _get_timeline, need to handle pinned tweets
                 #body = await self.api._get_timeline(self.options.user_id, count=PAGE_LIMIT, cursor=cursor)
                 body = await self._get_media_timeline(query.user_id, count=PAGE_LIMIT, cursor=cursor)
             elif query.method == 'retweets':
@@ -410,7 +435,11 @@ class Twitter(PluginBase):
                 raise Exception('unreachable')
             
             try:
-                instructions = body.data.user.result.timeline_v2.timeline.instructions
+                result = body.data.user.result
+                if 'timeline_v2' in result:
+                    instructions = result.timeline_v2.timeline.instructions
+                else:
+                    instructions = result.timeline.timeline.instructions
             except:
                 self.log.warning(body)
                 
@@ -483,6 +512,9 @@ class Twitter(PluginBase):
                     for it in inst.moduleItems:
                         item = it.item.itemContent
                         if item.itemType == 'TimelineTweet':
+                            if 'result' not in item.tweet_results:
+                                continue
+                            
                             try:
                                 tweet = item.tweet_results.result
                             except:
@@ -509,31 +541,43 @@ class Twitter(PluginBase):
             'count': count,
             'includePromotedContent': True,
             'withCommunity': True,
-            'withVoice': True,
-            'withV2Timeline': True
+            'withVoice': True
         }
         features = {
-            'responsive_web_graphql_exclude_directive_enabled': True,
+            'rweb_video_screen_enabled': False,
+            'profile_label_improvements_pcf_label_in_post_enabled': True,
+            'rweb_tipjar_consumption_enabled': True,
             'verified_phone_label_enabled': False,
-            'responsive_web_home_pinned_timelines_enabled': True,
             'creator_subscriptions_tweet_preview_api_enabled': True,
             'responsive_web_graphql_timeline_navigation_enabled': True,
             'responsive_web_graphql_skip_user_profile_image_extensions_enabled': False,
+            'premium_content_api_read_enabled': False,
+            'communities_web_enable_tweet_community_results_fetch': True,
             'c9s_tweet_anatomy_moderator_badge_enabled': True,
-            'tweetypie_unmention_optimization_enabled': True,
+            'responsive_web_grok_analyze_button_fetch_trends_enabled': False,
+            'responsive_web_grok_analyze_post_followups_enabled': True,
+            'responsive_web_jetfuel_frame': False,
+            'responsive_web_grok_share_attachment_enabled': True,
+            'articles_preview_enabled': True,
             'responsive_web_edit_tweet_api_enabled': True,
             'graphql_is_translatable_rweb_tweet_is_translatable_enabled': True,
             'view_counts_everywhere_api_enabled': True,
             'longform_notetweets_consumption_enabled': True,
-            'responsive_web_twitter_article_tweet_consumption_enabled': False,
+            'responsive_web_twitter_article_tweet_consumption_enabled': True,
             'tweet_awards_web_tipping_enabled': False,
+            'responsive_web_grok_show_grok_translated_post': False,
+            'responsive_web_grok_analysis_button_from_backend': True,
+            'creator_subscriptions_quote_tweet_preview_enabled': False,
             'freedom_of_speech_not_reach_fetch_enabled': True,
             'standardized_nudges_misinfo': True,
             'tweet_with_visibility_results_prefer_gql_limited_actions_policy_enabled': True,
             'longform_notetweets_rich_text_read_enabled': True,
             'longform_notetweets_inline_media_enabled': True,
-            'responsive_web_media_download_video_enabled': False,
-            'responsive_web_enhance_cards_enabled': False,
+            'responsive_web_grok_image_annotation_enabled': True,
+            'responsive_web_enhance_cards_enabled': False
+        }
+        fieldToggles = {
+            'withArticlePlainText': False
         }
         
         if cursor is not None:
@@ -542,9 +586,17 @@ class Twitter(PluginBase):
         params = {
             'variables': json.dumps(variables),
             'features': json.dumps(features),
+            'fieldToggles': json.dumps(fieldToggles),
         }
         
-        async with self.http.get(TIMELINE_URL, params=params) as resp:
+        # TODO move this to its own get function
+        # might need to retry as well, if it returns a 401 or whatever it is
+        # since the function might not be perfect
+        url = TIMELINE_URL
+        headers = {
+            'x-client-transaction-id': self.ct.generate_transaction_id('GET', yarl.URL(url).path),
+        }
+        async with self.http.get(url, params=params, headers=headers) as resp:
             text = await resp.text()
             try:
                 return Dynamic.from_json(text)
@@ -596,7 +648,11 @@ class Twitter(PluginBase):
             'fieldToggles': json.dumps(fieldToggles),
         }
         
-        async with self.http.get(MEDIATIMELINE_URL, params=params) as resp:
+        url = MEDIATIMELINE_URL
+        headers = {
+            'x-client-transaction-id': self.ct.generate_transaction_id('GET', yarl.URL(url).path),
+        }
+        async with self.http.get(url , params=params) as resp:
             text = await resp.text()
             try:
                 return Dynamic.from_json(text)
@@ -648,7 +704,11 @@ class Twitter(PluginBase):
             'fieldToggles': json.dumps(fieldToggles),
         }
         
-        async with self.http.get(LIKES_URL, params=params) as resp:
+        url = LIKES_URL
+        headers = {
+            'x-client-transaction-id': self.ct.generate_transaction_id('GET', yarl.URL(url).path),
+        }
+        async with self.http.get(url, params=params) as resp:
             return Dynamic.from_json(await resp.text())
 
 Plugin = Twitter

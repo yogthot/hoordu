@@ -246,10 +246,11 @@ class Fantia(PluginBase):
                 tag='nsfw'
             ))
         
-        post.files.append(FileDetails(
-            url=parse_href(post.url, post_data.thumb.original),
-            order=0
-        ))
+        if post_data.thumb is not None:
+            post.files.append(FileDetails(
+                url=parse_href(post.url, post_data.thumb.original),
+                order=0
+            ))
         
         # convert the post contents to posts as well
         for content in post_data.post_contents:
