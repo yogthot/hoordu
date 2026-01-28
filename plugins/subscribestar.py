@@ -158,8 +158,8 @@ class SubStar(PluginBase):
         
         if post_date is None:
             post_date = self._get_text(post_data, '.section-title .star_link-types')
-        
-        print(post_date)
+        if post_date is None:
+            post_date = self._get_text(post_data, '.section-title_date')
         
         post.post_time = dateutil.parser.parse(post_date).replace(tzinfo=None)
         
