@@ -1,9 +1,9 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import Enum, IntFlag, auto
 import json
 from typing import Any, Optional
 
-from sqlalchemy import Table, Column, Integer, String, Text, LargeBinary, DateTime, Numeric, ForeignKey, Index, func, inspect, select, insert
+from sqlalchemy import Table, Column, Integer, String, Text, LargeBinary, DateTime, Interval, Numeric, ForeignKey, Index, func, inspect, select, insert
 from sqlalchemy.orm import relationship, ColumnProperty, RelationshipProperty, DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.orm.attributes import InstrumentedAttribute
 from sqlalchemy.ext.asyncio import async_object_session, AsyncAttrs
@@ -164,6 +164,8 @@ class Source(Base, MetadataHelper):
     # rate limits, etc
     config: Mapped[Optional[str]] = mapped_column(Text)
     preferred_plugin_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey('plugin.id', ondelete='SET NULL'), nullable=True)
+    
+    update_interval: Mapped[Optional[timedelta]] = mapped_column(Interval)
     
     metadata_: Mapped[Optional[str]] = mapped_column('metadata', Text)
     
@@ -381,6 +383,8 @@ class Subscription(Base):
     
     repr: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     name: Mapped[str] = mapped_column(Text, nullable=False)
+    
+    last_feed_update_time: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     
     options: Mapped[Optional[str]] = mapped_column(Text)
     state: Mapped[Optional[str]] = mapped_column(Text)
