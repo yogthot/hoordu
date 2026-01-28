@@ -26,6 +26,7 @@ BOOKMARKS_REGEXP = [
 REDIRECT_REGEXP = re.compile(r'^https?:\/\/(?:www\.)?pixiv\.net\/jump\.php\?(?P<url>.*)$', flags=re.IGNORECASE)
 
 USER_URL = 'https://www.pixiv.net/en/users/{user_id}'
+USER_API_URL = 'https://www.pixiv.net/ajax/user/{user_id}?full=1&lang=ja'
 POST_GET_URL = 'https://www.pixiv.net/ajax/illust/{post_id}'
 POST_PAGES_URL = 'https://www.pixiv.net/ajax/illust/{post_id}/pages'
 POST_UGOIRA_URL = 'https://www.pixiv.net/ajax/illust/{post_id}/ugoira_meta'
@@ -201,14 +202,9 @@ class Pixiv(PluginBase):
         return post
     
     async def probe_query(self, query):
-        async with self.http.get(USER_URL.format(user_id=query.user_id)) as resp:
+        async with self.http.get(USER_API_URL.format(user_id=query.user_id)) as resp:
             resp.raise_for_status()
-            html = BeautifulSoup(await resp.text(), 'html.parser')
-        
-        preload_json = html.select('#meta-preload-data')[0]['content']
-        preload = Dynamic.from_json(unescape(preload_json))
-        
-        user = preload.user[str(query.user_id)]
+            user = Dynamic.from_json(await resp.text()).body
         
         related_urls = set()
         if user.webpage:
