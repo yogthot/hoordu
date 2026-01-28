@@ -17,15 +17,15 @@ class Unzip:
             self.archive
         )
         
-        sections = stdout.decode().strip().split('\n\n')
+        sections = stdout.strip().split(b'\n\n')
         files = []
         for s in sections:
-            parts = s.split('\n')
+            parts = s.split(b'\n')
             
             details = {}
             for p in parts:
-                k, v = p.split('=')
-                details[k.strip().lower().replace(' ', '_')] = v.strip()
+                k, v = p.split(b'=')
+                details[k.decode().strip().lower().replace(' ', '_')] = v.strip()
             
             files.append(details)
         

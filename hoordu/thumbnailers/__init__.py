@@ -63,7 +63,7 @@ async def zip_thumbnail(src: str, dst: str):
     files = await zip.list()
     
     for file in files:
-        ext = os.path.splitext(file['path'])[1]
+        ext = os.path.splitext(file['path'])[1].decode()
         mime_type = mimetypes.types_map.get(ext, None)
         if mime_type is None:
             continue
@@ -77,7 +77,7 @@ async def zip_thumbnail(src: str, dst: str):
         
         with tempfile.TemporaryDirectory() as dir:
             filename = file['path']
-            tmpdst = f'{dir}/{filename.split('/')[-1]}'
+            tmpdst = f'{dir}/{filename.split(b'/')[-1]}'
             await zip.extract(filename, tmpdst)
             return await thumbnailer(tmpdst, dst)
     
