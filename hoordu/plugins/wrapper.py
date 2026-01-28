@@ -41,7 +41,9 @@ class PluginWrapper:
         self.instance: PluginBase
         self.http: aiohttp.ClientSession
     
-    
+    @property
+    def name(self):
+        return self.plugin_class.id
     
     async def get_source(self, session) -> Source:
         stream = await session.stream(
@@ -203,6 +205,7 @@ class PluginWrapper:
                     case 'http' | 'https':
                         self.log.debug(f'downloading file: {url}')
                         async with self.http.get(file_details.url, timeout=aiohttp.ClientTimeout(total=None)) as resp:
+                            resp.raise_for_status()
                             orig = await save_response(resp, suffix=file_details.filename)
                         is_move = True
                     
@@ -227,10 +230,11 @@ class PluginWrapper:
                 related_post_id, related_post_details = url
                 
                 _, related_post = await self._get_post(related_post_id)
-                related_post = await self._convert_post(related_post, related_post_details)
                 
                 if not any(r.remote_id == related_post.id for r in existing_related):
                     self.session.add(Related(related_to=remote_post, remote=related_post))
+                
+                related_post = await self._convert_post(related_post, related_post_details)
         
         remote_post.favorite = post_details.is_favorite
         remote_post.hidden = post_details.is_hidden

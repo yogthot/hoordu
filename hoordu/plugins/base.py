@@ -69,6 +69,8 @@ class PostDetails:
     related: list[Union[str, tuple[str, 'PostDetails']]] = field(default_factory=list)
     files: list[FileDetails] = field(default_factory=list)
     
+    extensions: dict[str, Any] = field(default_factory=dict)
+    
     is_favorite: bool = False
     is_hidden: bool = False
     is_removed: bool = False
