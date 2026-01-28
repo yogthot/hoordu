@@ -8,6 +8,9 @@ from typing import Optional
 import logging
 
 from sqlalchemy import select
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 
 from .config import *
 from .models import *
@@ -22,8 +25,17 @@ class HoorduSession:
     def __init__(self, hoordu):
         self.hoordu = hoordu
         self.log: logging.Logger = hoordu.log
-        self.raw = hoordu._sessionmaker()
-        self.priority = hoordu._sessionmaker()
+        
+        self.engine = create_async_engine(self.hoordu.settings.database,
+            echo=self.hoordu.settings.get('debug', False),
+            #isolation_level='AUTOCOMMIT' # TODO find a better way to do this
+        )
+        self._sessionmaker = sessionmaker(
+            self.engine, expire_on_commit=False, class_=AsyncSession
+        )
+        
+        self.raw = self._sessionmaker()
+        self.priority = self._sessionmaker()
         self._plugins: dict[str, PluginWrapper] = {}
         
         self._callbacks: list[tuple[Callable[['HoorduSession', bool], Awaitable], bool, bool]] = []
@@ -48,6 +60,7 @@ class HoorduSession:
         
         finally:
             await self._stack.__aexit__(exc_type, exc, tb)
+            await self.engine.dispose()
             self._stack = contextlib.AsyncExitStack()
         
         return False

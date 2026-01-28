@@ -11,9 +11,6 @@ from .logging import *
 from .plugins.filesystem import Filesystem
 from . import _version
 
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 import packaging.version
 from typing import Optional
 
@@ -35,11 +32,6 @@ class hoordu:
         useragent = self.settings.get('useragent')
         if useragent is not None:
             self.useragent = useragent
-        
-        self.engine = create_async_engine(self.settings.database, echo=self.settings.get('debug', False))
-        self._sessionmaker = sessionmaker(
-            self.engine, expire_on_commit=False, class_=AsyncSession
-        )
         
         # global initializer
         configure_logger('hoordu', self.settings.get('log_file'))
@@ -67,6 +59,8 @@ class hoordu:
         engine = create_async_engine(settings.database, echo=settings.get('debug', False))
         async with engine.begin() as conn:
             await conn.run_sync(models.Base.metadata.create_all)
+        
+        await engine.dispose()
     
     def _file_bucket(self, file: File) -> int:
         return file.id // self.settings.files_bucket_size
