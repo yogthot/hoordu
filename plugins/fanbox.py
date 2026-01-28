@@ -43,10 +43,11 @@ class Fanbox(PluginBase):
     async def init(self):
         self.http.headers.update({
             'Origin': 'https://www.fanbox.cc',
-            'Referer': 'https://www.fanbox.cc/'
+            'Referer': 'https://www.fanbox.cc/',
+            'Alt-Used': 'api.fanbox.cc',
         })
         self.http.cookie_jar.update_cookies({
-            'FANBOXSESSID': self.config.FANBOXSESSID
+            'FANBOXSESSID': self.config.FANBOXSESSID,
         })
     
     @classmethod
