@@ -13,7 +13,7 @@ DOMAIN = 'x.com'
 TWEET_DETAIL_URL = f'https://{DOMAIN}/i/api/graphql/Pn68XRZwyV9ClrAEmK8rrQ/TweetDetail'
 USER_BY_ID = f'https://{DOMAIN}/i/api/graphql/8slyDObmnUzBOCu7kYZj_A/UserByRestId'
 USER_BY_SCREENNAME = f'https://{DOMAIN}/i/api/graphql/qRednkZG-rn1P6b48NINmQ/UserByScreenName'
-TIMELINE_URL = f'https://{DOMAIN}/i/api/graphql/OAx9yEcW3JA9bPo63pcYlA/UserTweetsAndReplies'
+TIMELINE_URL = f'https://{DOMAIN}/i/api/graphql/_P1zJA2kS9W1PLHKdThsrg/UserTweetsAndReplies'
 MEDIATIMELINE_URL = f'https://{DOMAIN}/i/api/graphql/Az0-KW6F-FyYTc2OJmvUhg/UserMedia'
 LIKES_URL = f'https://{DOMAIN}/i/api/graphql/kgZtsNyE46T3JaEf2nF9vw/Likes'
 
@@ -107,7 +107,7 @@ class Twitter(PluginBase):
         self.http.headers.update({
             'Accept': '*/*',
             'Accept-Language': 'en-US,en;q=0.5',
-            'Referer': 'https://twitter.com/',
+            'Referer': 'https://x.com/',
             'authorization': f'Bearer {self.config.bearer_token}',
             'x-twitter-auth-type': 'OAuth2Session',
             'x-csrf-token': self.config.csrf,
@@ -189,10 +189,34 @@ class Twitter(PluginBase):
         
         author = post_data.core.user_results.result
         
-        user = author.legacy.screen_name
+        if 'screen_name' in author.legacy:
+            user = author.legacy.screen_name
+            display_name = author.legacy.name
+            user_icon = author.legacy.profile_image_url_https
+        else:
+            user = author.core.screen_name
+            display_name = author.core.name
+            user_icon = author.core.profile_image_url_https
+        
         user_id = author.rest_id
-        text = post_data.legacy.full_text
         post_time = dateutil.parser.parse(post_data.legacy.created_at)
+        
+        text = post_data.legacy.full_text
+        
+        # filter out the t.co link
+        entities_list = post_data.legacy.get_path('entities', 'media')
+        if entities_list:
+            filtered = list(set((e.indices[0], e.indices[1]) for e in entities_list if 'indices' in e))
+            reverse_sort = list(reversed(sorted(filtered, key=lambda e: e[1])))
+            
+            if len(reverse_sort) >= 2:
+                raise Exception('more than one entity, analyse this')
+            
+            for entity in reverse_sort:
+                    left = entity[0]
+                    right = entity[1]
+                    text = (text[:left] + text[right:]).strip()
+        
         
         post = PostDetails()
         
@@ -208,7 +232,7 @@ class Twitter(PluginBase):
             metadata={'user': user}
         ))
         
-        if post_data.legacy.possibly_sensitive:
+        if post_data.legacy.get('possibly_sensitive', False):
             post.tags.append(TagDetails(
                 category=TagCategory.meta,
                 tag='nsfw'
@@ -229,7 +253,13 @@ class Twitter(PluginBase):
             
             related_id = related.rest_id
             related_user = related.core.user_results.result
-            url = TWEET_FORMAT.format(user=related_user.legacy.screen_name, tweet_id=related_id)
+            
+            if 'screen_name' in related_user.legacy:
+                related_screen_name = related_user.legacy.screen_name
+            else:
+                related_screen_name = related_user.core.screen_name
+            
+            url = TWEET_FORMAT.format(user=related_screen_name, tweet_id=related_id)
             post.related.append(url)
         
         quoted = post_data.get_path('quoted_status_result', 'result')
@@ -355,9 +385,14 @@ class Twitter(PluginBase):
         if match:
             thumb_url = match.group('base') + PROFILE_THUMB_SIZE + match.group('ext')
         
+        if 'screen_name' in user.legacy:
+            screen_name = user.legacy.screen_name
+        else:
+            screen_name = user.core.screen_name
+        
         return SearchDetails(
             identifier=f'{query.method}:{query.user_id}',
-            hint=user.legacy.screen_name,
+            hint=screen_name,
             title=user.legacy.name,
             description=user.legacy.description,
             thumbnail_url=thumb_url,
@@ -377,9 +412,13 @@ class Twitter(PluginBase):
             tweet_user_id = tweet.core.user_results.result.rest_id
             is_same_user = (tweet_user_id == query.user_id)
         except AttributeError:
-            self.log.warning(tweet)
-            is_same_user = False
-            
+            try:
+                tweet_user_id = tweet.legacy.user_id_str
+                is_same_user = (tweet_user_id == query.user_id)
+            except AttributeError:
+                self.log.warning(tweet)
+                is_same_user = False
+        
         sort_index = int(tweet.rest_id)
         
         is_retweet = False
@@ -447,7 +486,7 @@ class Twitter(PluginBase):
                 # try to handle rate limit errors
                 # {'errors': [{'code': 88, 'message': 'Rate limit exceeded.'}]}
                 #if 'errors' in body and len(body.errors) == 1:
-                raise APIError(body.errors[0].message)
+                raise APIError(str(body))
                 #except: pass
             
             for inst in instructions:
@@ -546,6 +585,7 @@ class Twitter(PluginBase):
         features = {
             'rweb_video_screen_enabled': False,
             'profile_label_improvements_pcf_label_in_post_enabled': True,
+            'responsive_web_profile_redirect_enabled': False,
             'rweb_tipjar_consumption_enabled': True,
             'verified_phone_label_enabled': False,
             'creator_subscriptions_tweet_preview_api_enabled': True,
@@ -558,6 +598,7 @@ class Twitter(PluginBase):
             'responsive_web_grok_analyze_post_followups_enabled': True,
             'responsive_web_jetfuel_frame': False,
             'responsive_web_grok_share_attachment_enabled': True,
+            'responsive_web_grok_annotations_enabled': False,
             'articles_preview_enabled': True,
             'responsive_web_edit_tweet_api_enabled': True,
             'graphql_is_translatable_rweb_tweet_is_translatable_enabled': True,
@@ -574,6 +615,8 @@ class Twitter(PluginBase):
             'longform_notetweets_rich_text_read_enabled': True,
             'longform_notetweets_inline_media_enabled': True,
             'responsive_web_grok_image_annotation_enabled': True,
+            'responsive_web_grok_imagine_annotation_enabled': True,
+            'responsive_web_grok_community_note_auto_translation_is_enabled': False,
             'responsive_web_enhance_cards_enabled': False
         }
         fieldToggles = {
@@ -597,6 +640,7 @@ class Twitter(PluginBase):
             'x-client-transaction-id': self.ct.generate_transaction_id('GET', yarl.URL(url).path),
         }
         async with self.http.get(url, params=params, headers=headers) as resp:
+            resp.raise_for_status()
             text = await resp.text()
             try:
                 return Dynamic.from_json(text)
