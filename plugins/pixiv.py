@@ -108,6 +108,13 @@ class Pixiv(PluginBase):
         post.type = PostType.collection if post_data.illustType == 1 else PostType.set
         post.post_time = dateutil.parser.parse(post_data.createDate)
         
+        post.extensions = {
+            'user_name': post_data.userName,
+            'user_handle': post_data.userAccount,
+            'user_url': f'https://www.pixiv.net/users/{post_data.userId}',
+            'user_icon': next((p.profileImageUrl for p in post_data.userIllusts.values() if p and 'profileImageUrl' in p), None),
+        }
+        
         # there is no visual difference in multiple whitespace (or newlines for that matter)
         # unless inside <pre>, but that's too hard to deal with :(
         description = re.sub(r'\s+', ' ', post_data.description)

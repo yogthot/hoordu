@@ -226,6 +226,13 @@ class Twitter(PluginBase):
         post.post_time = post_time
         post.metadata = {'user': user}
         
+        post.extensions = {
+            'user_name': display_name,
+            'user_handle': user,
+            'user_url': f'https://{DOMAIN}/{user}',
+            'user_icon': user_icon,
+        }
+        
         post.tags.append(TagDetails(
             category=TagCategory.artist,
             tag=user_id,
