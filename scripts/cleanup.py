@@ -27,7 +27,7 @@ def move_file(src, dst):
         try: shutil.move(src, dst)
         except: pass
 
-async def check(session: HoorduSession, path, isorig=True):
+async def check(path, isorig=True):
     for bucket in path.iterdir():
         for file in bucket.iterdir():
             file_id = None
@@ -40,7 +40,9 @@ async def check(session: HoorduSession, path, isorig=True):
                 delete_file(file)
                 continue
             
-            db_file = await session.select(File).where(File.id == file_id).one_or_none()
+            async with hrd.session() as session:
+                db_file = await session.select(File).where(File.id == file_id).one_or_none()
+            
             if db_file is None:
                 delete_file(file)
                 
@@ -52,10 +54,10 @@ async def check(session: HoorduSession, path, isorig=True):
                 if file != actual_path:
                     move_file(file, actual_path)
 
-def main():
-    async with hrd.session() as session:
-        check(session, basepath / 'files', True)
-        check(session, basepath / 'thumbs', False)
+async def main():
+    #async with hrd.session() as session:
+    await check(basepath / 'files', True)
+    await check(basepath / 'thumbs', False)
 
 
 asyncio.run(main())
