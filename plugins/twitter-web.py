@@ -13,7 +13,7 @@ DOMAIN = 'x.com'
 TWEET_DETAIL_URL = f'https://{DOMAIN}/i/api/graphql/Pn68XRZwyV9ClrAEmK8rrQ/TweetDetail'
 USER_BY_ID = f'https://{DOMAIN}/i/api/graphql/8slyDObmnUzBOCu7kYZj_A/UserByRestId'
 USER_BY_SCREENNAME = f'https://{DOMAIN}/i/api/graphql/qRednkZG-rn1P6b48NINmQ/UserByScreenName'
-TIMELINE_URL = f'https://{DOMAIN}/i/api/graphql/_P1zJA2kS9W1PLHKdThsrg/UserTweetsAndReplies'
+TIMELINE_URL = f'https://{DOMAIN}/i/api/graphql/aDl2OEiH_EFH10mA_ewZ9A/UserTweetsAndReplies'
 MEDIATIMELINE_URL = f'https://{DOMAIN}/i/api/graphql/Az0-KW6F-FyYTc2OJmvUhg/UserMedia'
 LIKES_URL = f'https://{DOMAIN}/i/api/graphql/kgZtsNyE46T3JaEf2nF9vw/Likes'
 
@@ -192,11 +192,11 @@ class Twitter(PluginBase):
         if 'screen_name' in author.legacy:
             user = author.legacy.screen_name
             display_name = author.legacy.name
-            user_icon = author.legacy.profile_image_url_https
+            user_icon = author.legacy.get('profile_image_url_https')
         else:
             user = author.core.screen_name
             display_name = author.core.name
-            user_icon = author.core.profile_image_url_https
+            user_icon = author.core.get('profile_image_url_https')
         
         user_id = author.rest_id
         post_time = dateutil.parser.parse(post_data.legacy.created_at)
@@ -593,7 +593,7 @@ class Twitter(PluginBase):
             'rweb_video_screen_enabled': False,
             'profile_label_improvements_pcf_label_in_post_enabled': True,
             'responsive_web_profile_redirect_enabled': False,
-            'rweb_tipjar_consumption_enabled': True,
+            'rweb_tipjar_consumption_enabled': False,
             'verified_phone_label_enabled': False,
             'creator_subscriptions_tweet_preview_api_enabled': True,
             'responsive_web_graphql_timeline_navigation_enabled': True,
@@ -603,9 +603,9 @@ class Twitter(PluginBase):
             'c9s_tweet_anatomy_moderator_badge_enabled': True,
             'responsive_web_grok_analyze_button_fetch_trends_enabled': False,
             'responsive_web_grok_analyze_post_followups_enabled': True,
-            'responsive_web_jetfuel_frame': False,
+            'responsive_web_jetfuel_frame': True,
             'responsive_web_grok_share_attachment_enabled': True,
-            'responsive_web_grok_annotations_enabled': False,
+            'responsive_web_grok_annotations_enabled': True,
             'articles_preview_enabled': True,
             'responsive_web_edit_tweet_api_enabled': True,
             'graphql_is_translatable_rweb_tweet_is_translatable_enabled': True,
@@ -615,7 +615,7 @@ class Twitter(PluginBase):
             'tweet_awards_web_tipping_enabled': False,
             'responsive_web_grok_show_grok_translated_post': False,
             'responsive_web_grok_analysis_button_from_backend': True,
-            'creator_subscriptions_quote_tweet_preview_enabled': False,
+            'post_ctas_fetch_enabled': True,
             'freedom_of_speech_not_reach_fetch_enabled': True,
             'standardized_nudges_misinfo': True,
             'tweet_with_visibility_results_prefer_gql_limited_actions_policy_enabled': True,
