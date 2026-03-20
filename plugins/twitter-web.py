@@ -88,20 +88,23 @@ class Twitter(PluginBase):
     
     async def init(self):
         # transaction id hacks
+        import bs4
         import requests
-        from x_client_transaction.utils import handle_x_migration
+        from x_client_transaction.utils import generate_headers, handle_x_migration, get_ondemand_file_url
         from x_client_transaction import ClientTransaction
-        headers = {"Authority": "x.com",
-           "Accept-Language": "en-US,en;q=0.9",
-           "Cache-Control": "no-cache",
-           "Referer": "https://x.com",
-           "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36",
-           "X-Twitter-Active-User": "yes",
-           "X-Twitter-Client-Language": "en"}
+        
         session = requests.Session()
-        session.headers = headers
-        response = handle_x_migration(session)
-        self.ct = ClientTransaction(response)
+        session.headers = generate_headers()
+        
+        # TODO convert this to async
+        home_page = session.get(url="https://x.com")
+        home_page_response = bs4.BeautifulSoup(home_page.content, 'html.parser')
+        ondemand_file_url = get_ondemand_file_url(response=home_page_response)
+        ondemand_file = session.get(url=ondemand_file_url)
+        ondemand_file_response = bs4.BeautifulSoup(ondemand_file.content, 'html.parser')
+        #ondemand_file_response = ondemand_file.text
+        
+        self.ct = ClientTransaction(home_page_response=home_page_response, ondemand_file_response=ondemand_file_response)
         #
         
         self.http.headers.update({
@@ -704,6 +707,7 @@ class Twitter(PluginBase):
             'x-client-transaction-id': self.ct.generate_transaction_id('GET', yarl.URL(url).path),
         }
         async with self.http.get(url , params=params) as resp:
+            resp.raise_for_status()
             text = await resp.text()
             try:
                 return Dynamic.from_json(text)
@@ -760,6 +764,7 @@ class Twitter(PluginBase):
             'x-client-transaction-id': self.ct.generate_transaction_id('GET', yarl.URL(url).path),
         }
         async with self.http.get(url, params=params) as resp:
+            resp.raise_for_status()
             return Dynamic.from_json(await resp.text())
 
 Plugin = Twitter
