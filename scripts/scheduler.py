@@ -12,7 +12,7 @@ import collections
 import hoordu
 from hoordu.models import *
 
-from sqlalchemy.sql import or_, func
+from sqlalchemy.sql import or_, and_, func
 from sqlalchemy.orm import selectinload
 
 
@@ -104,7 +104,7 @@ async def fetch(session, plugin, subscription):
             await session.rollback()
             return
 
-async def main():
+async def main(sources):
     hrd = hoordu.hoordu(hoordu.load_config())
     async with hrd.session() as session:
         subs = await session.select(Subscription) \
@@ -112,11 +112,18 @@ async def main():
                 .where(
                     or_(
                         Subscription.last_feed_update_time == None,
-                        #Subscription.last_feed_update_time + Subscription.update_interval <= func.now(),
-                        #and_(Subscription.update_interval == None, Subscription.last_feed_update_time + Source.update_interval <= func.now())
-                        Subscription.last_feed_update_time + Source.update_interval <= func.now()
+                        and_(
+                            Subscription.update_interval != None,
+                            Subscription.last_feed_update_time + Subscription.update_interval <= func.now()
+                        ),
+                        and_(
+                            Subscription.update_interval == None,
+                            Source.update_interval != None,
+                            Subscription.last_feed_update_time + Source.update_interval <= func.now()
+                        )
                     ),
-                    Subscription.plugin_id != None
+                    Subscription.plugin_id != None,
+                    Source.name.in_(sources) if sources else True
                 ) \
                 .order_by(Subscription.last_feed_update_time.asc()) \
                 .options(
@@ -153,6 +160,14 @@ async def main():
 
 
 if __name__ == '__main__':
-    asyncio.run(main())
+    import sys
+    
+    if len(sys.argv) == 2:
+        sources = sys.argv[1].split(',')
+        
+    else:
+        sources = None
+    
+    asyncio.run(main(sources))
 
 

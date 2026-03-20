@@ -385,6 +385,7 @@ class Subscription(Base):
     name: Mapped[str] = mapped_column(Text, nullable=False)
     
     last_feed_update_time: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    update_interval: Mapped[Optional[timedelta]] = mapped_column(Interval)
     
     options: Mapped[Optional[str]] = mapped_column(Text)
     state: Mapped[Optional[str]] = mapped_column(Text)
