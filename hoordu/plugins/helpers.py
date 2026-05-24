@@ -22,7 +22,7 @@ async def unwind_url(http, url, max_iterations=20):
     i = 0
     try:
         while url is not None:
-            async with http.head(url, allow_redirects=False, timeout=10) as resp:
+            async with http.head(url, follow_redirects=False, timeout=10) as resp:
                 if resp.status // 100 == 3:
                     url = parse_href(url, resp.headers.get('Location'))
                     
