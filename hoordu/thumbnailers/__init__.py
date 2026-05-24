@@ -63,7 +63,7 @@ async def zip_thumbnail(src: str, dst: str):
     files = await zip.list()
     
     for file in files:
-        ext = os.path.splitext(file['path'])[1].decode()
+        ext = os.path.splitext(file['path'])[1].decode().lower()
         mime_type = mimetypes.types_map.get(ext, None)
         if mime_type is None:
             continue
