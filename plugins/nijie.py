@@ -1,7 +1,7 @@
 import re
 import itertools
 import dateutil.parser
-import yarl
+import httpx
 
 from bs4 import BeautifulSoup
 
@@ -35,7 +35,7 @@ class Nijie(PluginBase):
         )
     
     async def init(self):
-        self.http.cookie_jar.update_cookies({
+        self.http.cookies.update({
             'NIJIEIJIEID': self.config.NIJIEIJIEID,
             'nijie_tok': self.config.nijie_tok,
         })
@@ -45,8 +45,8 @@ class Nijie(PluginBase):
         if url.isdigit():
             return url
         
-        parsed = yarl.URL(url)
-        part = parsed.raw_authority + parsed.raw_path
+        parsed = httpx.URL(url)
+        part = parsed.host + parsed.path
         
         if part in POST_URL:
             return parsed.query['id']
@@ -59,12 +59,12 @@ class Nijie(PluginBase):
         return None
     
     async def download(self, post_id, post_data=None):
-        post_url = str(yarl.URL('https://nijie.info/view.php').with_query({'id': post_id}))
+        post_url = str(httpx.URL('https://nijie.info/view.php').copy_add_param('id', post_id))
         
         if post_data is None:
-            async with self.http.get(post_url) as response:
-                response.raise_for_status()
-                post_data = BeautifulSoup(await response.text(), 'html.parser')
+            response = await self.http.get(post_url)
+            response.raise_for_status()
+            post_data = BeautifulSoup(response.text, 'html.parser')
         
         post_files = post_data.select("#gallery .mozamoza")
         user_id = post_files[0]['user_id']
@@ -116,9 +116,9 @@ class Nijie(PluginBase):
             post.related.append(url)
         
         # files
-        async with self.http.get('https://nijie.info/view_popup.php', params={'id': post_id}) as response:
-            response.raise_for_status()
-            popup = BeautifulSoup(await response.text(), 'html.parser')
+        response = await self.http.get('https://nijie.info/view_popup.php', params={'id': post_id})
+        response.raise_for_status()
+        popup = BeautifulSoup(response.text, 'html.parser')
         
         files = popup.select('#img_window a > *:not(.view_filter)')
         if len(files) != len(post_files):
@@ -139,9 +139,9 @@ class Nijie(PluginBase):
         return post
     
     async def probe_query(self, query):
-        async with self.http.get('https://nijie.info/members.php', params={'id': query.user_id}) as response:
-            response.raise_for_status()
-            html = BeautifulSoup(await response.text(), 'html.parser')
+        response = await self.http.get('https://nijie.info/members.php', params={'id': query.user_id})
+        response.raise_for_status()
+        html = BeautifulSoup(response.text, 'html.parser')
         
         user_name = list(html.select("#pro .name")[0].children)[2]
         thumbnail_url = html.select("#pro img")[0]['src'].replace("__rs_cs150x150/", "")
@@ -181,12 +181,12 @@ class Nijie(PluginBase):
                     'p': page_id,
                     'id': query.user_id,
                 }
-                async with self.http.get('https://nijie.info/members_illust.php', params=params) as response:
-                    response.raise_for_status()
-                    html = BeautifulSoup(await response.text(), 'html.parser')
+                response = await self.http.get('https://nijie.info/members_illust.php', params=params)
+                response.raise_for_status()
+                html = BeautifulSoup(response.text, 'html.parser')
                 
                 post_urls = [e['href'] for e in html.select('#members_dlsite_left .picture a')]
-                post_ids = [int(yarl.URL(url).query['id']) for url in post_urls]
+                post_ids = [int(httpx.URL(url).params['id']) for url in post_urls]
                 
                 if len(post_ids) == 0:
                     # empty page, stopping

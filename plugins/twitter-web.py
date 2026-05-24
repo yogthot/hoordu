@@ -1,7 +1,7 @@
 import re
 import dateutil.parser
 import json
-import yarl
+import httpx
 
 from hoordu.dynamic import Dynamic
 from hoordu.models import *
@@ -117,7 +117,7 @@ class Twitter(PluginBase):
             'Pragma': 'no-cache',
             'Cache-Control': 'no-cache',
         })
-        self.http.cookie_jar.update_cookies({
+        self.http.cookies.update({
             'ct0': self.config.csrf,
             'auth_token': self.config.auth_token,
         })
@@ -161,10 +161,10 @@ class Twitter(PluginBase):
         
         url = TWEET_DETAIL_URL
         headers = {
-            'x-client-transaction-id': self.ct.generate_transaction_id('GET', yarl.URL(url).path),
+            'x-client-transaction-id': self.ct.generate_transaction_id('GET', httpx.URL(url).path),
         }
-        async with self.http.get(url, params=params, headers=headers) as resp:
-            body = Dynamic.from_json(await resp.text())
+        resp = await self.http.get(url, params=params, headers=headers)
+        body = Dynamic.from_json(resp.text)
         
         instructions = body.data.threaded_conversation_with_injections_v2.instructions
         for inst in instructions:
@@ -300,7 +300,8 @@ class Twitter(PluginBase):
                     post.files.append(FileDetails(
                         url=MEDIA_URL.format(base_url=base_url, ext=ext, size=ORIG_SIZE),
                         order=order,
-                        filename=filename
+                        filename=filename,
+                        metadata=Dynamic({'type': media.type}).to_json()
                     ))
                     
                 elif media.type in ('video', 'animated_gif'):
@@ -321,7 +322,8 @@ class Twitter(PluginBase):
                     
                     post.files.append(FileDetails(
                         url=best_variant['url'],
-                        order=order
+                        order=order,
+                        metadata=Dynamic({'type': media.type}).to_json()
                     ))
                     
                 else:
@@ -361,10 +363,10 @@ class Twitter(PluginBase):
         }
         
         headers = {
-            'x-client-transaction-id': self.ct.generate_transaction_id('GET', yarl.URL(url).path),
+            'x-client-transaction-id': self.ct.generate_transaction_id('GET', httpx.URL(url).path),
         }
-        async with self.http.get(url, params=params, headers=headers) as resp:
-            body = Dynamic.from_json(await resp.text())
+        resp = await self.http.get(url, params=params, headers=headers)
+        body = Dynamic.from_json(resp.text)
         
         user = body.get_path('data', 'user', 'result')
         
@@ -647,15 +649,15 @@ class Twitter(PluginBase):
         # since the function might not be perfect
         url = TIMELINE_URL
         headers = {
-            'x-client-transaction-id': self.ct.generate_transaction_id('GET', yarl.URL(url).path),
+            'x-client-transaction-id': self.ct.generate_transaction_id('GET', httpx.URL(url).path),
         }
-        async with self.http.get(url, params=params, headers=headers) as resp:
-            resp.raise_for_status()
-            text = await resp.text()
-            try:
-                return Dynamic.from_json(text)
-            except:
-                raise APIError(text)
+        resp = await self.http.get(url, params=params, headers=headers)
+        resp.raise_for_status()
+        text = resp.text
+        try:
+            return Dynamic.from_json(text)
+        except:
+            raise APIError(text)
     
     async def _get_media_timeline(self, user_id, count=PAGE_LIMIT, cursor=None):
         variables = {
@@ -704,15 +706,15 @@ class Twitter(PluginBase):
         
         url = MEDIATIMELINE_URL
         headers = {
-            'x-client-transaction-id': self.ct.generate_transaction_id('GET', yarl.URL(url).path),
+            'x-client-transaction-id': self.ct.generate_transaction_id('GET', httpx.URL(url).path),
         }
-        async with self.http.get(url , params=params) as resp:
-            resp.raise_for_status()
-            text = await resp.text()
-            try:
-                return Dynamic.from_json(text)
-            except:
-                raise APIError(text)
+        resp = await self.http.get(url , params=params)
+        resp.raise_for_status()
+        text = resp.text
+        try:
+            return Dynamic.from_json(text)
+        except:
+            raise APIError(text)
     
     async def _get_likes(self, user_id, count=PAGE_LIMIT, cursor=None):
         variables = {
@@ -761,11 +763,11 @@ class Twitter(PluginBase):
         
         url = LIKES_URL
         headers = {
-            'x-client-transaction-id': self.ct.generate_transaction_id('GET', yarl.URL(url).path),
+            'x-client-transaction-id': self.ct.generate_transaction_id('GET', httpx.URL(url).path),
         }
-        async with self.http.get(url, params=params) as resp:
-            resp.raise_for_status()
-            return Dynamic.from_json(await resp.text())
+        resp = await self.http.get(url, params=params)
+        resp.raise_for_status()
+        return Dynamic.from_json(resp.text)
 
 Plugin = Twitter
 

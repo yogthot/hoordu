@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from tempfile import mkstemp
 import functools
 import dateutil.parser
-import yarl
+import httpx
 
 from bs4 import BeautifulSoup
 
@@ -54,7 +54,7 @@ class SubStar(PluginBase):
             'Sec-Fetch-User': '?1',
             'Upgrade-Insecure-Requests': '1',
         })
-        self.http.cookie_jar.update_cookies({
+        self.http.cookies.update({
             '_browser_id': self.config.browser_id,
             '_personalization_id': self.config.personalization_id,
             '_subscribestar_session': self.config.subscribestar_session,
@@ -221,9 +221,9 @@ class SubStar(PluginBase):
         url = f'https://subscribestar.adult/posts/{post_id}'
         
         if post_data is None:
-            async with self.http.get(url) as response:
-                response.raise_for_status()
-                post_data = BeautifulSoup(await response.text(), 'html.parser')
+            response = await self.http.get(url)
+            response.raise_for_status()
+            post_data = BeautifulSoup(response.text, 'html.parser')
         
         post_id_el = post_data.select('[data-post_id]')
         is_accessible = len(post_id_el) > 0
@@ -238,12 +238,12 @@ class SubStar(PluginBase):
     async def probe_query(self, query):
         if query.user_id is None:
             url = f'https://subscribestar.adult/{query.user}'
-            async with self.http.get(url) as response:
-                response.raise_for_status()
-                page_html = BeautifulSoup(await response.text(), 'html.parser')
+            response = await self.http.get(url)
+            response.raise_for_status()
+            page_html = BeautifulSoup(response.text, 'html.parser')
             
             posts_href = page_html.select('.posts-more')[0].attrs['href']
-            query.user_id = yarl.URL(posts_href).query['star_id']
+            query.user_id = httpx.URL(posts_href).params['star_id']
         
         return SearchDetails(
             identifier=query.user,
@@ -266,19 +266,19 @@ class SubStar(PluginBase):
         while True:
             self.log.info('getting next page')
             if next_page is None:
-                async with self.http.get(main_url) as response:
-                    response.raise_for_status()
-                    page_html = BeautifulSoup(await response.text(), 'html.parser')
-                    posts_html = page_html.select('.posts')[0]
+                response = await self.http.get(main_url)
+                response.raise_for_status()
+                page_html = BeautifulSoup(response.text, 'html.parser')
+                posts_html = page_html.select('.posts')[0]
                 
             else:
                 timestamp = int(datetime.now(timezone.utc).timestamp() * 1000)
                 next_page += f'&_={timestamp}'
-                async with self.http.get(next_page) as response:
-                    response.raise_for_status()
-                    json_response = Dynamic.from_json(await response.text())
-                    page_html = BeautifulSoup(json_response.html, 'html.parser')
-                    posts_html = page_html
+                response = await self.http.get(next_page)
+                response.raise_for_status()
+                json_response = Dynamic.from_json(response.text)
+                page_html = BeautifulSoup(json_response.html, 'html.parser')
+                posts_html = page_html
             
             next_page_sel = page_html.select('.posts-more')
             if len(next_page_sel) != 0:
@@ -299,13 +299,11 @@ class SubStar(PluginBase):
             
             if next_page is not None:
                 if begin_at is not None or 'page_end_order' not in state:
-                    state['page_end_order'] = yarl.URL(next_page).query['page_end_order_position']
+                    state['page_end_order'] = httpx.URL(next_page).params['page_end_order_position']
                 
             else:
                 state['page_end_order'] = -1
                 return
-
-# TODO test this whole thing
 
 Plugin = SubStar
 

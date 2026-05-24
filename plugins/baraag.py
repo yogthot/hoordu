@@ -73,7 +73,7 @@ class Baraag(PluginBase):
         if post_data is None:
             resp = await self.http.get(f'https://baraag.net/api/v1/statuses/{post_id}')
             resp.raise_for_status()
-            post_data = Dynamic.from_json(await resp.text())
+            post_data = Dynamic.from_json(resp.text)
         
         post_data = self._check_reblog(post_data)
         
@@ -127,7 +127,7 @@ class Baraag(PluginBase):
         
         resp = await self.http.get('https://baraag.net/api/v1/accounts/lookup', params=request)
         resp.raise_for_status()
-        user = Dynamic.from_json(await resp.text())
+        user = Dynamic.from_json(resp.text)
         
         query.user_id = user.id
         
@@ -193,7 +193,7 @@ class Baraag(PluginBase):
             
             resp = await self.http.get(f'https://baraag.net/api/v1/accounts/{query.user_id}/statuses', params=request)
             resp.raise_for_status()
-            posts = Dynamic.from_json(await resp.text())
+            posts = Dynamic.from_json(resp.text)
             
             if len(posts) == 0:
                 return

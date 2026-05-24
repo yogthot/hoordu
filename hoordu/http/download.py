@@ -1,8 +1,7 @@
 import asyncio
 import os
 from typing import Optional
-import aiohttp
-import yarl
+import httpx
 
 from pathlib import Path
 from tempfile import mkstemp
@@ -10,7 +9,7 @@ from .rfc6266 import safe_filename as safe_rfc6266_filename
 from ..util import wrap_async
 
 async def save_response(
-    r: aiohttp.ClientResponse,
+    r: httpx.Response,
     url: Optional[str] = None,
     destination: Optional[str | os.PathLike] = None,
     suffix: Optional[str] = None,
@@ -39,7 +38,7 @@ async def save_response(
                 suffix = attachment_filename
                 
             elif final_url is not None:
-                suffix = Path(yarl.URL(final_url).path).name
+                suffix = Path(httpx.URL(final_url).path).name
                 
             else:
                 suffix = ''
@@ -61,7 +60,7 @@ async def save_response(
     
     with file as f:
         write = wrap_async(f.write)
-        async for data in r.content.iter_chunked(1024):
+        async for data in r.aiter_bytes(1024):
             await write(data)
     
     return Path(path)

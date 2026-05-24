@@ -1,7 +1,7 @@
 from typing import Any, Optional
 from collections.abc import Awaitable
 
-import aiohttp
+import httpx
 from urllib.parse import urlencode, quote
 from oauthlib.common import generate_token
 import secrets
@@ -121,12 +121,12 @@ class OAuth:
         url = self._token_endpoint
         data = urlencode(args, quote_via=quote)
         
-        async with aiohttp.ClientSession() as client:
-            async with client.post(url, headers=headers, data=data) as response:
-                if response.status != 200:
-                    raise OAuthError(await response.text())
+        async with httpx.AsyncClient() as client:
+            response = await client.post(url, headers=headers, data=data)
+            if response.status_code != 200:
+                raise OAuthError(await response.text())
 
-                return await response.json()
+            return response.json()
     
     async def get_access_token(self,
         code: str,

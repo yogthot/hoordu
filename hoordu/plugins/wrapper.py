@@ -19,8 +19,7 @@ import pathlib
 import logging
 import os
 import contextlib
-import yarl
-import aiohttp
+import httpx
 
 __all__ = [
     'PluginWrapper'
@@ -39,7 +38,7 @@ class PluginWrapper:
         self.source: Source
         self.plugin: Plugin
         self.instance: PluginBase
-        self.http: aiohttp.ClientSession
+        self.http: httpx.AsyncClient
     
     @property
     def name(self):
@@ -109,18 +108,16 @@ class PluginWrapper:
         self.plugin = await self.get_plugin(self.session)
         self.config = Dynamic.from_json(self.source.config)
         
-        # TODO expose this to the caller somehow
-        useragent = 'Mozilla/5.0 (X11; Linux x86_64; rv:130.0) Gecko/20100101 Firefox/130.0'
         headers = {
-            'User-Agent': useragent,
+            # TODO this could probably be done in a better way
+            'User-Agent': self.session.hoordu.useragent,
         }
-        
-        self.http = aiohttp.ClientSession(headers=headers)
         
         self.instance = self.plugin_class()
         self.instance.log = self.log
         self.instance.config = Dynamic.from_json(self.plugin.config)
         
+        self.http = httpx.AsyncClient(http2=True, headers=headers, follow_redirects=True)
         async with self.http:
             self.instance.http = self.http
             await self.instance.init()
@@ -190,35 +187,33 @@ class PluginWrapper:
             self.session.add(file)
             
             if not file.present:
-                orig = None
                 is_move = False
                 
                 self.log.info(f'found new file {file.remote_order}: {file.remote_identifier}')
-                url = yarl.URL(file_details.url)
+                url = httpx.URL(file_details.url)
                 match url.scheme:
                     case 'file':
-                        print(file_details.url)
-                        orig = file_details.url[len('file://'):]
-                        self.log.debug(f'copying file: {orig}')
+                        file.local_path = file_details.url[len('file://'):]
+                        self.log.debug(f'copying file: {file.local_path}')
                         is_move = False
                     
                     case 'http' | 'https':
                         self.log.debug(f'downloading file: {url}')
-                        async with self.http.get(file_details.url, timeout=aiohttp.ClientTimeout(total=None)) as resp:
+                        async with self.http.stream('GET', file_details.url) as resp:
                             resp.raise_for_status()
-                            orig = await save_response(resp, suffix=file_details.filename)
+                            file.local_path = await save_response(resp, suffix=file_details.filename)
                         is_move = True
                     
                     case 'data':
-                        path = save_data_uri(file_details.url)
+                        file.local_path = save_data_uri(file_details.url)
                         is_move = True
                     
                     case _:
                         self.log.warning(f'unknown scheme: {url.scheme}')
                         raise Exception(f'unable to download file url: {url}')
                 
-                if orig is not None:
-                    await self.session.import_file(file, orig, move=is_move)
+                if file.local_path is not None:
+                    await self.session.import_file(file, file.local_path, move=is_move)
                     await self.session.commit()
         
         existing_related = await remote_post.awaitable_attrs.related

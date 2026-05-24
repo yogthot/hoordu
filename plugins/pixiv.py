@@ -85,15 +85,15 @@ class Pixiv(PluginBase):
         self.http.headers.update({
             'Referer': 'https://www.pixiv.net/'
         })
-        self.http.cookie_jar.update_cookies({
+        self.http.cookies.update({
             'PHPSESSID': self.config.PHPSESSID
         })
     
     async def download(self, post_id, post_data=None):
         if post_data is None:
-            async with self.http.get(POST_GET_URL.format(post_id=post_id)) as resp:
-                resp.raise_for_status()
-                post_resp = Dynamic.from_json(await resp.text())
+            resp = await self.http.get(POST_GET_URL.format(post_id=post_id))
+            resp.raise_for_status()
+            post_resp = Dynamic.from_json(resp.text)
         
             if post_resp.error is True:
                 self.log.error('pixiv api error: %s', post_resp.message)
@@ -178,9 +178,9 @@ class Pixiv(PluginBase):
         
         if post_data.illustType == 2:
             # ugoira
-            async with self.http.get(POST_UGOIRA_URL.format(post_id=post_id)) as resp:
-                resp.raise_for_status()
-                ugoira_meta = Dynamic.from_json(await resp.text()).body
+            resp = await self.http.get(POST_UGOIRA_URL.format(post_id=post_id))
+            resp.raise_for_status()
+            ugoira_meta = Dynamic.from_json(resp.text).body
             
             post.files.append(FileDetails(
                 url=ugoira_meta.originalSrc,
@@ -196,9 +196,9 @@ class Pixiv(PluginBase):
             ))
             
         else:
-            async with self.http.get(POST_PAGES_URL.format(post_id=post_id)) as resp:
-                resp.raise_for_status()
-                pages = Dynamic.from_json(await resp.text()).body
+            resp = await self.http.get(POST_PAGES_URL.format(post_id=post_id))
+            resp.raise_for_status()
+            pages = Dynamic.from_json(resp.text).body
             
             for order, page in enumerate(pages):
                 post.files.append(FileDetails(
@@ -209,9 +209,9 @@ class Pixiv(PluginBase):
         return post
     
     async def probe_query(self, query):
-        async with self.http.get(USER_API_URL.format(user_id=query.user_id)) as resp:
-            resp.raise_for_status()
-            user = Dynamic.from_json(await resp.text()).body
+        resp = await self.http.get(USER_API_URL.format(user_id=query.user_id))
+        resp.raise_for_status()
+        user = Dynamic.from_json(resp.text).body
         
         related_urls = set()
         if user.webpage:
@@ -224,9 +224,9 @@ class Pixiv(PluginBase):
         comment_html = BeautifulSoup(user.commentHtml, 'html.parser')
         related_urls.update(a.text for a in comment_html.select('a'))
         
-        async with self.http.get(FANBOX_URL_FORMAT.format(user_id=query.user_id), allow_redirects=False) as creator_response:
-            if creator_response.status // 100 == 3:
-                related_urls.add(creator_response.headers['Location'])
+        creator_response = await self.http.get(FANBOX_URL_FORMAT.format(user_id=query.user_id), follow_redirects=False)
+        if creator_response.status_code // 100 == 3:
+            related_urls.add(creator_response.headers['Location'])
         
         return SearchDetails(
             identifier=f'{query.method}:{query.user_id}',
@@ -238,9 +238,9 @@ class Pixiv(PluginBase):
         )
     
     async def iterate_user(self, query, state, begin_at=None):
-        async with self.http.get(USER_POSTS_URL.format(user_id=query.user_id)) as resp:
-            resp.raise_for_status()
-            user_info = Dynamic.from_json(await resp.text())
+        resp = await self.http.get(USER_POSTS_URL.format(user_id=query.user_id))
+        resp.raise_for_status()
+        user_info = Dynamic.from_json(resp.text)
         
         if user_info.error is True:
             raise APIError(user_info.message)
@@ -272,40 +272,40 @@ class Pixiv(PluginBase):
             }
             
             self.log.info('getting next page')
-            async with self.http.get(USER_BOOKMARKS_URL.format(user_id=query.user_id), params=params) as resp:
-                resp.raise_for_status()
-                bookmarks_resp = Dynamic.from_json(await resp.text())
+            resp = await self.http.get(USER_BOOKMARKS_URL.format(user_id=query.user_id), params=params)
+            resp.raise_for_status()
+            bookmarks_resp = Dynamic.from_json(resp.text)
+            
+            if bookmarks_resp.error is True:
+                raise APIError(bookmarks_resp.message)
+            
+            bookmarks = bookmarks_resp.body.works
+            
+            if len(bookmarks) == 0:
+                return
+            
+            for bookmark in bookmarks:
+                bookmark_id = int(bookmark.bookmarkData.id)
+                post_id = bookmark.id
                 
-                if bookmarks_resp.error is True:
-                    raise APIError(bookmarks_resp.message)
+                resp = await self.http.get(POST_GET_URL.format(post_id=post_id))
+                # skip this post if 404 (deleted bookmarks)
+                was_deleted = (resp.status_code == 404)
                 
-                bookmarks = bookmarks_resp.body.works
-                
-                if len(bookmarks) == 0:
-                    return
-                
-                for bookmark in bookmarks:
-                    bookmark_id = int(bookmark.bookmarkData.id)
-                    post_id = bookmark.id
+                if not was_deleted:
+                    resp.raise_for_status()
+                    post_resp = Dynamic.from_json(resp.text)
                     
-                    async with self.http.get(POST_GET_URL.format(post_id=post_id)) as resp:
-                        # skip this post if 404 (deleted bookmarks)
-                        was_deleted = (resp.status == 404)
-                        
-                        if not was_deleted:
-                            resp.raise_for_status()
-                            post_resp = Dynamic.from_json(await resp.text())
-                            
-                            if post_resp.error is True:
-                                raise APIError(post_resp.message)
-                            
-                            yield bookmark_id, str(post_id), post_resp.body
-                        
-                        if first_time or begin_at is not None:
-                            state['offset'] += 1
+                    if post_resp.error is True:
+                        raise APIError(post_resp.message)
+                    
+                    yield bookmark_id, str(post_id), post_resp.body
                 
-                # offset for the next page
-                offset += len(bookmarks)
+                if first_time or begin_at is not None:
+                    state['offset'] += 1
+            
+            # offset for the next page
+            offset += len(bookmarks)
     
     def iterate_query(self, query, state, begin_at=None):
         if query.method == 'illusts':

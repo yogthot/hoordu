@@ -26,7 +26,7 @@ class Gumroad(PluginBase):
         )
     
     async def init(self):
-        self.http.cookie_jar.update_cookies({
+        self.http.cookies.update({
             '_gumroad_guid': self.config.gumroad_guid,
             '_gumroad_app_session': self.config.gumroad_app_session,
         })
@@ -44,9 +44,9 @@ class Gumroad(PluginBase):
         account_code, product_code = post_id.split('.')
         main_url = PRODUCT_FORMAT.format(account_code=account_code, product_code=product_code)
         
-        async with self.http.get(main_url) as response:
-            response.raise_for_status()
-            doc = BeautifulSoup(await response.text(), 'html.parser')
+        response = await self.http.get(main_url)
+        response.raise_for_status()
+        doc = BeautifulSoup(response.text, 'html.parser')
         
         post_json = doc.select('script[data-component-name="ProductPage"]')[0].text
         post_data = Dynamic.from_json(post_json)
@@ -83,9 +83,9 @@ class Gumroad(PluginBase):
         if post_data.purchase is not None:
             # download files
             content_url = parse_href(main_url, post_data.purchase.content_url)
-            async with self.http.get(content_url) as response:
-                response.raise_for_status()
-                doc = BeautifulSoup(await response.text(), 'html.parser')
+            response = await self.http.get(content_url)
+            response.raise_for_status()
+            doc = BeautifulSoup(response.text, 'html.parser')
             
             content_json = doc.select('script[data-component-name="DownloadPageWithContent"]')[0].text
             content: Dynamic = Dynamic.from_json(content_json)

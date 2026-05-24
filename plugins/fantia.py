@@ -56,16 +56,16 @@ class Fantia(PluginBase):
             'Origin': 'https://fantia.jp/',
             'Referer': 'https://fantia.jp/'
         })
-        self.http.cookie_jar.update_cookies({
+        self.http.cookies.update({
             '_session_id': self.config.session_id
         })
     
     async def _get_csrf_token(self, post_id):
-        async with self.http.get(POST_FORMAT.format(post_id=post_id)) as response:
-            response.raise_for_status()
-            html = BeautifulSoup(await response.text(), 'html.parser')
-            meta_tag = html.select('meta[name="csrf-token"]')[0]
-            return str(meta_tag['content'])
+        response = await self.http.get(POST_FORMAT.format(post_id=post_id))
+        response.raise_for_status()
+        html = BeautifulSoup(response.text, 'html.parser')
+        meta_tag = html.select('meta[name="csrf-token"]')[0]
+        return str(meta_tag['content'])
     
     async def _content_to_post(self, post_data, content_data):
         creator_id = str(post_data.fanclub.id)
@@ -193,9 +193,9 @@ class Fantia(PluginBase):
         }
         
         if post_data is None:
-            async with self.http.get(POST_GET_URL.format(post_id=post_id), headers=headers) as response:
-                response.raise_for_status()
-                post_data = Dynamic.from_json(await response.text()).post
+            response = await self.http.get(POST_GET_URL.format(post_id=post_id), headers=headers)
+            response.raise_for_status()
+            post_data = Dynamic.from_json(response.text).post
         
         id_parts = post_id.split('-')
         if len(id_parts) == 2:
@@ -262,13 +262,13 @@ class Fantia(PluginBase):
         return post
     
     async def probe_query(self, query):
-        async with self.http.get(FANCLUB_URL.format(fanclub_id=query.creator_id)) as html_response:
-            html_response.raise_for_status()
-            html = BeautifulSoup(await html_response.text(), 'html.parser')
+        html_response = await self.http.get(FANCLUB_URL.format(fanclub_id=query.creator_id))
+        html_response.raise_for_status()
+        html = BeautifulSoup(html_response.text, 'html.parser')
         
-        async with self.http.get(FANCLUB_GET_URL.format(fanclub_id=query.creator_id)) as response:
-            response.raise_for_status()
-            fanclub = Dynamic.from_json(await response.text()).fanclub
+        response = await self.http.get(FANCLUB_GET_URL.format(fanclub_id=query.creator_id))
+        response.raise_for_status()
+        fanclub = Dynamic.from_json(response.text).fanclub
         
         related_urls = {str(x['href']) for x in html.select('main .btns:not(.share-btns) a')}
         
@@ -284,9 +284,9 @@ class Fantia(PluginBase):
     async def iterate_query(self, query, state, begin_at=None):
         post_id = begin_at
         if post_id is None:
-            async with self.http.get(FANCLUB_GET_URL.format(fanclub_id=query.creator_id)) as response:
-                response.raise_for_status()
-                fanclub = Dynamic.from_json(await response.text()).fanclub
+            response = await self.http.get(FANCLUB_GET_URL.format(fanclub_id=query.creator_id))
+            response.raise_for_status()
+            fanclub = Dynamic.from_json(response.text).fanclub
             
             if not fanclub.recent_posts:
                 return
@@ -300,12 +300,12 @@ class Fantia(PluginBase):
                 'X-Requested-With': 'XMLHttpRequest',
             }
             
-            async with self.http.get(POST_GET_URL.format(post_id=post_id), headers=headers) as response:
-                was_deleted = (response.status == 404)
-                if was_deleted:
-                    raise Exception('post was deleted...')
-                response.raise_for_status()
-                post = Dynamic.from_json(await response.text()).post
+            response = await self.http.get(POST_GET_URL.format(post_id=post_id), headers=headers)
+            was_deleted = (response.status_code == 404)
+            if was_deleted:
+                raise Exception('post was deleted...')
+            response.raise_for_status()
+            post = Dynamic.from_json(response.text).post
             
             # the wrapper will automatically skip the begin_at post if not None
             

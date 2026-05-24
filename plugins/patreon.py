@@ -64,7 +64,7 @@ class Patreon(PluginBase):
             'TE': 'trailers',
             'User-Agent': self.config.get('user_agent'),
         })
-        self.http._cookie_jar.update_cookies({
+        self.http._cookies.update({
             'session_id': self.config.session_id,
             'cf_clearance': self.config.get('cf_clearance')
         })
@@ -95,10 +95,10 @@ class Patreon(PluginBase):
                 'json-api-version': '1.0'
             }
             
-            async with self.http.get(f'https://www.patreon.com/api/posts/{post_id}', params=params) as response:
-                response.raise_for_status()
-                #print(await response.text())
-                json = Dynamic.from_json(await response.text())
+            response = await self.http.get(f'https://www.patreon.com/api/posts/{post_id}', params=params)
+            response.raise_for_status()
+            #print(await response.text())
+            json = Dynamic.from_json(response.text)
             
             post_obj = json.data
             included = IncludedMap(json.included)
@@ -151,6 +151,24 @@ class Patreon(PluginBase):
                 p.replace_with(f'{p.text}\n')
             
             post.comment = comment_html.text
+            
+        #elif post_attr.get('content_json_string') is not None:
+        #    # TODO this should create a blog type post...
+        #    post.comment = ''
+        #    
+        #    content = Dynamic.from_json(ost_attr.content_json_string)
+        #    if content.type == 'doc':
+        #        for section in content.content:
+        #            if section.type == 'paragraph':
+        #                for para in section.content:
+        #                    if para.type==text:
+        #                        append(para.text)
+        #            
+        #        else:
+        #            self.log.warning(f'unknown section type: {content.type}')
+        #        
+        #    else:
+        #        self.log.warning(f'unknown json comment type: {content.type}')
             
         elif post_attr.get('teaser_text') is not None and not post.comment:
             post.comment = post_attr.teaser_text
@@ -261,9 +279,9 @@ class Patreon(PluginBase):
             'json-api-version': '1.0'
         }
         
-        async with self.http.get('https://www.patreon.com/api/users', params=params) as response:
-            response.raise_for_status()
-            creator_resp = Dynamic.from_json(await response.text())
+        response = await self.http.get('https://www.patreon.com/api/users', params=params)
+        response.raise_for_status()
+        creator_resp = Dynamic.from_json(response.text)
         
         creator = creator_resp.data.attributes
         
@@ -306,9 +324,9 @@ class Patreon(PluginBase):
                 params['page[cursor]'] = cursor
             
             self.log.info('getting next page')
-            async with self.http.get('https://www.patreon.com/api/posts', params=params) as response:
-                response.raise_for_status()
-                page = Dynamic.from_json(await response.text())
+            response = await self.http.get('https://www.patreon.com/api/posts', params=params)
+            response.raise_for_status()
+            page = Dynamic.from_json(response.text)
             
             includes = IncludedMap(page.included)
             

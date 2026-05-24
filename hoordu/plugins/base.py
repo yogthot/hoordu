@@ -17,8 +17,7 @@ import pathlib
 import logging
 import os
 import contextlib
-import yarl
-import aiohttp
+import httpx
 
 
 __all__ = [
@@ -48,6 +47,9 @@ class FileDetails:
     filename: Optional[str] = None
     identifier: Optional[str] = None
     metadata: Optional[str] = None
+    
+    # to keep track of the local file path after it's been downloaded, if needed
+    local_path: Optional[str] = None
 
 
 @dataclass
@@ -104,7 +106,7 @@ class PluginBase:
     log: logging.Logger
     config: Any
     
-    http: aiohttp.ClientSession
+    http: httpx.AsyncClient
     
     # to be set by plugin developer
     source: ClassVar[str]

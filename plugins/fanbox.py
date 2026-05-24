@@ -1,7 +1,7 @@
 import re
 import dateutil.parser
 import itertools
-import yarl
+import httpx
 
 from bs4 import BeautifulSoup
 
@@ -46,7 +46,7 @@ class Fanbox(PluginBase):
             'Referer': 'https://www.fanbox.cc/',
             'Alt-Used': 'api.fanbox.cc',
         })
-        self.http.cookie_jar.update_cookies({
+        self.http.cookies.update({
             'FANBOXSESSID': self.config.FANBOXSESSID,
         })
     
@@ -70,9 +70,9 @@ class Fanbox(PluginBase):
         return None
     
     async def download(self, post_id, post_data=None):
-        async with self.http.get(f'https://api.fanbox.cc/post.info?postId={post_id}') as response:
-            response.raise_for_status()
-            post_data = Dynamic.from_json(await response.text()).body
+        response = await self.http.get(f'https://api.fanbox.cc/post.info?postId={post_id}')
+        response.raise_for_status()
+        post_data = Dynamic.from_json(response.text).body
         
         if post_data.isRestricted:
             self.log.warning('inaccessible post %s', post_id)
@@ -182,9 +182,9 @@ class Fanbox(PluginBase):
                         if embed.serviceProvider == 'fanbox':
                             related_post_id = embed.contentId.split('/')[-1]
                             
-                            async with self.http.get(POST_EMBED_INFO_URL.format(related_post_id=related_post_id)) as response:
-                                response.raise_for_status()
-                                related_post_body = Dynamic.from_json(await response.text()).body
+                            response = await self.http.get(POST_EMBED_INFO_URL.format(related_post_id=related_post_id))
+                            response.raise_for_status()
+                            related_post_body = Dynamic.from_json(response.text).body
                             
                             url = POST_FORMAT.format(creator=related_post_body.creatorId, post_id=related_post_id)
                             
@@ -250,23 +250,36 @@ class Fanbox(PluginBase):
             else:
                 raise NotImplementedError('unknown post type: {}'.format(post.type))
         
+        async def unwind_framely(url):
+            if 'cdn.iframe.ly' in url:
+                resp = await self.http.get(url)
+                try:
+                    resp.raise_for_status()
+                    url = re.search(r'"linkUri":"([^"]*)"', resp.text).group(1)
+                except:
+                    pass
+            
+            return url
+        
+        post.related = [await unwind_framely(url) for url in post.related]
+        
         return post
     
     async def probe_query(self, query):
         pixiv_id = query.get('pixiv_id')
         
         if pixiv_id:
-            async with self.http.get(f'https://www.pixiv.net/fanbox/creator/{pixiv_id}', allow_redirects=False) as response:
-                creator_url = response.headers['Location']
+            response = await self.http.get(f'https://www.pixiv.net/fanbox/creator/{pixiv_id}', follow_redirects=False)
+            creator_url = response.headers['Location']
             
             creator_id = CREATOR_URL_REGEXP.match(creator_url).group('creator')
             
         else:
             creator_id = query.creator
         
-        async with self.http.get(f'https://api.fanbox.cc/creator.get?creatorId={creator_id}') as response:
-            response.raise_for_status()
-            creator = Dynamic.from_json(await response.text()).body
+        response = await self.http.get(f'https://api.fanbox.cc/creator.get?creatorId={creator_id}')
+        response.raise_for_status()
+        creator = Dynamic.from_json(response.text).body
         
         query.creator = creator_id
         query.pixiv_id = creator.user.userId
@@ -286,17 +299,19 @@ class Fanbox(PluginBase):
     async def iterate_query(self, query, state, begin_at=None):
         await self.probe_query(query)
         
+        pinned_post = None
+        
         page_params = {
             'creatorId': query.creator
         }
-        async with self.http.get('https://api.fanbox.cc/post.paginateCreator', params=page_params) as response:
-            response.raise_for_status()
-            pages = Dynamic.from_json(await response.text()).body
+        response = await self.http.get('https://api.fanbox.cc/post.paginateCreator', params=page_params)
+        response.raise_for_status()
+        pages = Dynamic.from_json(response.text).body
         
         if begin_at is None:
             page_id = 0
         else:
-            page_map = [int(yarl.URL(page).query['maxId']) for page in pages]
+            page_map = [int(httpx.URL(page).params['maxId']) for page in pages]
             page_id = next((i for i, p in enumerate(page_map) if p < begin_at), len(page_map))
             page_id = max(page_id - 1, 0)
         
@@ -304,12 +319,23 @@ class Fanbox(PluginBase):
             if page_id >= len(pages):
                 return
             
-            async with self.http.get(pages[page_id]) as response:
-                response.raise_for_status()
-                posts = Dynamic.from_json(await response.text()).body
+            response = await self.http.get(pages[page_id])
+            response.raise_for_status()
+            posts = Dynamic.from_json(response.text).body
             
             for post in posts:
+                if post.isPinned:
+                    if pinned_post is not None:
+                        raise Exception('more than 1 pinned post detected')
+                    
+                    pinned_post = post
+                    continue
+                
                 sort_index = int(post.id)
+                
+                if pinned_post is not None and sort_index < int(pinned_post.id):
+                    yield int(pinned_post.id), pinned_post.id, None
+                    pinned_post = None
                 
                 yield sort_index, post.id, None
             

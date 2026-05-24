@@ -83,7 +83,7 @@ class Misskey(PluginBase):
         if note is None:
             resp = await self.http.post('https://misskey.io/api/notes/show', json=request)
             resp.raise_for_status()
-            note = Dynamic.from_json(await resp.text())
+            note = Dynamic.from_json(resp.text)
         
         note = self._check_renote(note)
         
@@ -128,7 +128,7 @@ class Misskey(PluginBase):
         
         resp = await self.http.post('https://misskey.io/api/users/show', json=request)
         resp.raise_for_status()
-        user = Dynamic.from_json(await resp.text())
+        user = Dynamic.from_json(resp.text)
         
         query.user_id = user.id
         
@@ -196,7 +196,7 @@ class Misskey(PluginBase):
             
             resp = await self.http.post('https://misskey.io/api/users/notes', json=request)
             resp.raise_for_status()
-            notes = Dynamic.from_json(await resp.text())
+            notes = Dynamic.from_json(resp.text)
             
             if len(notes) == 0:
                 return

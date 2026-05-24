@@ -79,11 +79,13 @@ class GDrive(PluginBase):
                     return True, None
                 
             else:
-                # maybe check if refreshing is needed
-                tokens = await oauth.refresh_access_token(config.refresh_token)
-                
-                config.access_token = tokens['access_token']
-                config.refresh_token = tokens.get('refresh_token', config.refresh_token)
+                # TODO test access token somehow, and refresh if needed
+                # should also handle the 401 when the call fails tho... (realistically I could just start a new session manually)
+                if not config.contains('access_token'):
+                    tokens = await oauth.refresh_access_token(config.refresh_token)
+                    
+                    config.access_token = tokens['access_token']
+                    config.refresh_token = tokens.get('refresh_token', config.refresh_token)
                 
                 return True, None
     
@@ -114,9 +116,9 @@ class GDrive(PluginBase):
             if page_token is not None:
                 args['pageToken'] = page_token
             
-            async with self.http.get(f'{GDRIVE_ENDPOINT}/files', params=args) as response:
-                response.raise_for_status()
-                body = Dynamic.from_json(await response.text())
+            response = await self.http.get(f'{GDRIVE_ENDPOINT}/files', params=args)
+            response.raise_for_status()
+            body = Dynamic.from_json(response.text)
             
             for node in body.files:
                 if node.mimeType == LINK_MIMETYPE:
@@ -144,9 +146,9 @@ class GDrive(PluginBase):
         args = {
             'fields': 'id, name, mimeType, createdTime, thumbnailLink, shortcutDetails'
         }
-        async with self.http.get(f'{GDRIVE_ENDPOINT}/files/{post_id}', params=args) as response:
-            response.raise_for_status()
-            node = Dynamic.from_json(await response.text())
+        response = await self.http.get(f'{GDRIVE_ENDPOINT}/files/{post_id}', params=args)
+        response.raise_for_status()
+        node = Dynamic.from_json(response.text)
         
         url = None
         if node.mimeType == DIR_MIMETYPE:
