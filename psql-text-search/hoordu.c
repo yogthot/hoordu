@@ -2,6 +2,8 @@
 #include "commands/defrem.h"
 #include "tsearch/ts_public.h"
 #include "tsearch/ts_locale.h"
+#include "utils/formatting.h"
+#include "catalog/pg_collation.h"
 
 typedef struct
 {
@@ -196,7 +198,7 @@ hoordu_tagdict_lexize(PG_FUNCTION_ARGS)
     bool found_colon = false;
     
     res = palloc0(sizeof(TSLexeme) * 4);
-    txt = lowerstr_with_len(in, len);
+    txt = str_tolower(in, len, DEFAULT_COLLATION_OID);
     strlen = pg_mbstrlen(txt);
     
     res[0].nvariant = 1;
