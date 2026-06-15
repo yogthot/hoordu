@@ -7,7 +7,6 @@ from .dynamic import Dynamic
 from .session import HoorduSession
 from .plugins import *
 from .forms import *
-from .logging import *
 from .plugins.filesystem import Filesystem
 from . import _version
 
@@ -33,8 +32,6 @@ class hoordu:
         if useragent is not None:
             self.useragent = useragent
         
-        # global initializer
-        configure_logger('hoordu', self.settings.get('log_file'))
         self.log: logging.Logger = logging.getLogger('hoordu.hoordu')
         
         self._session: HoorduSession = HoorduSession(self)
