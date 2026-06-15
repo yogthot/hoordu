@@ -372,15 +372,17 @@ async def safe_fetch(args, session, plugin: PluginWrapper, subscription: Subscri
 async def process_sub(session, plugin_id, options):
     plugin = await session.plugin(plugin_id)
     
-    details = await plugin.probe_query(options)
-    
-    if details is not None:
+    try:
+        subscription = await plugin.subscribe(options)
+        
+        details = hoordu.Dynamic.from_json(subscription.metadata_)
+        
         description = details.description or ''
         description = description.replace('\n', '\n    ')
         related = '\n    '.join(details.related_urls)
         
         print(f"""
-hint: {details.hint}
+name: {subscription.name}
 title: {details.title}
 description:
     {description}
@@ -388,15 +390,7 @@ related:
     {related}
         """.strip())
         
-        sub_name = details.hint
-        
-    else:
-        sub_name = input('pick a name for the subscription:\a ')
-        if not sub_name:
-            sys.exit(0)
-    
-    try:
-        return await plugin.subscribe(sub_name, options)
+        return 
         
     except IntegrityError:
         await session.rollback()

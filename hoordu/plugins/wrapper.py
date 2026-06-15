@@ -275,12 +275,14 @@ class PluginWrapper:
         return await self.instance.probe_query(query)
     
     async def subscribe(self,
-        name: str,
-        query: Dynamic
+        query: Dynamic,
+        name: Optional[str] = None
     ) -> Subscription:
         details = await self.probe_query(query)
         if details is None:
             raise Exception(f'Subscriptions are not supported for {self.instance.id}')
+        
+        name = name if name is not None else details.hint
         
         subcription = Subscription(
             source=self.source,
