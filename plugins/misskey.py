@@ -95,6 +95,13 @@ class Misskey(PluginBase):
         user = note.user.username if note.user.host is None else f'{note.user.username}@{note.user.host}'
         post.metadata = {'user': user}
         
+        post.extensions = {
+            'user_name': user,
+            'user_handle': note.user.name,
+            'user_url': f'https://misskey.io/@{user}',
+            'user_icon': note.user.avatarUrl,
+        }
+        
         post.tags.append(TagDetails(TagCategory.artist, user))
         
         has_nsfw_file = any(f.isSensitive for f in note.files)

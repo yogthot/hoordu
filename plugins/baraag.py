@@ -96,6 +96,13 @@ class Baraag(PluginBase):
         
         post.metadata = {'user': user}
         
+        post.extensions = {
+            'user_name': post_data.account.display_name,
+            'user_handle': user,
+            'user_url': f'https://baraag.net/@{user}',
+            'user_icon': post_data.account.avatar,
+        }
+        
         post.tags.append(TagDetails(TagCategory.artist, user))
         
         if post_data.sensitive or post_data.spoiler_text:
@@ -111,9 +118,10 @@ class Baraag(PluginBase):
         
         post.files = [
             FileDetails(
-                url=f.url,
+                url=f.url if f.remote_url is None else f.remote_url,
                 order=i + 1,
-                identifier=f.id
+                identifier=f.id,
+                metadata=Dynamic({'type': f.get('type')}).to_json()
             )
             for i, f in enumerate(post_data.media_attachments)
         ]
