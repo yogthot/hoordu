@@ -14,9 +14,9 @@ from hoordu.dynamic import Dynamic
 
 
 POST_FORMAT = 'https://www.patreon.com/posts/{post_id}'
-POST_REGEXP = re.compile(r'^https?:\/\/(?:www\.)?patreon\.com\/posts\/(:?[^\?#\/]*-)?(?P<post_id>\d+)(?:\?.*)?(?:#.*)?$', flags=re.IGNORECASE)
+POST_REGEXP = re.compile(r'^https?:\/\/(?:www\.)?patreon\.com\/(?:[^\/]+)?\/posts\/(:?[^\?#\/]*-)?(?P<post_id>\d+)(?:\?.*)?(?:#.*)?$', flags=re.IGNORECASE)
 
-CREATOR_REGEXP = re.compile(r'^https?:\/\/(?:www\.)?patreon\.com\/(?P<vanity>[^\/]+)(?:\/.*)?(?:\?.*)?(?:#.*)?$', flags=re.IGNORECASE)
+CREATOR_REGEXP = re.compile(r'^https?:\/\/(?:www\.)?patreon\.com\/(?:cw?\/)?(?P<vanity>[^\/]+)(?:\/.*)?(?:\?.*)?(?:#.*)?$', flags=re.IGNORECASE)
 
 
 class IncludedMap(OrderedDict):
