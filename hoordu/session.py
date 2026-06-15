@@ -7,7 +7,7 @@ import os
 from typing import Optional
 import logging
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
@@ -35,7 +35,8 @@ class HoorduSession:
         )
         
         self.raw = self._sessionmaker()
-        self.priority = self._sessionmaker()
+        self.raw._hoordu_session = self
+        self._priority = self._sessionmaker()
         self._plugins: dict[str, PluginWrapper] = {}
         
         self._callbacks: list[tuple[Callable[['HoorduSession', bool], Awaitable], bool, bool]] = []
@@ -44,14 +45,12 @@ class HoorduSession:
     async def __aenter__(self):
         async with contextlib.AsyncExitStack() as stack:
             await stack.enter_async_context(self.raw)
-            await stack.enter_async_context(self.priority)
+            await stack.enter_async_context(self._priority)
             self._stack = stack.pop_all()
         return self
     
     async def __aexit__(self, exc_type, exc, tb):
         try:
-            #await self.priority.commit()
-            
             if exc is None:
                 await self.commit()
                 
@@ -112,6 +111,20 @@ class HoorduSession:
         await self.raw.delete(instance)
     
     async def commit(self):
+        for plugin in self._plugins.values():
+            if not hasattr(plugin, 'config'):
+                continue
+            
+            json_config = plugin.instance.config.to_json()
+            if json_config != plugin.plugin_config:
+                await self._priority.execute(update(Plugin) \
+                    .where(
+                        Plugin.name == plugin.name
+                    ).values(
+                        config=json_config
+                    ))
+                await self._priority.commit()
+        
         await self.raw.commit()
         
         for callback, on_commit, _ in self._callbacks:

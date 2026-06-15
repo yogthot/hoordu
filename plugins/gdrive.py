@@ -103,6 +103,35 @@ class GDrive(PluginBase):
         
         return None
     
+    async def _refresh_token(self):
+        self.log.info('refreshing token')
+        
+        oauth = OAuth(**{
+            'auth_endpoint': AUTH_URL,
+            'token_endpoint': TOKEN_URL,
+            'redirect_uri': REDIRECT_URL,
+            'scopes': SCOPES,
+            'client_id': self.config.client_id,
+            'client_secret': self.config.client_secret
+        })
+        
+        tokens = await oauth.refresh_access_token(self.config.refresh_token)
+        self.config.access_token = tokens['access_token']
+        self.config.refresh_token = tokens.get('refresh_token', self.config.refresh_token)
+        
+        self.http.headers.update({
+            'Authorization': f'Bearer {self.config.access_token}'
+        })
+    
+    async def _request(self, method, url, *args, **kwargs):
+        resp = await self.http.request(method, url, *args, **kwargs)
+        
+        if resp.status_code == 401:
+            await self._refresh_token()
+            resp = await self.http.request(method, url, *args, **kwargs)
+        
+        return resp
+    
     async def _ordered_walk(self, node, base_path=''):
         page_token = None
         nodes = []
@@ -116,7 +145,7 @@ class GDrive(PluginBase):
             if page_token is not None:
                 args['pageToken'] = page_token
             
-            response = await self.http.get(f'{GDRIVE_ENDPOINT}/files', params=args)
+            response = await self._request('GET', f'{GDRIVE_ENDPOINT}/files', params=args)
             response.raise_for_status()
             body = Dynamic.from_json(response.text)
             
@@ -146,7 +175,7 @@ class GDrive(PluginBase):
         args = {
             'fields': 'id, name, mimeType, createdTime, thumbnailLink, shortcutDetails'
         }
-        response = await self.http.get(f'{GDRIVE_ENDPOINT}/files/{post_id}', params=args)
+        response = await self._request('GET', f'{GDRIVE_ENDPOINT}/files/{post_id}', params=args)
         response.raise_for_status()
         node = Dynamic.from_json(response.text)
         

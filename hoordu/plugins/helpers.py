@@ -1,4 +1,12 @@
 import re
+import base64
+import json
+
+__all__ = [
+    'parse_href',
+    'unwind_url',
+    'parse_jwt',
+]
 
 def parse_href(page_url, href):
     if re.match(r'^[a-zA-Z]+:', href):
@@ -23,7 +31,7 @@ async def unwind_url(http, url, max_iterations=20):
     try:
         while url is not None:
             async with http.head(url, follow_redirects=False, timeout=10) as resp:
-                if resp.status // 100 == 3:
+                if resp.status_code // 100 == 3:
                     url = parse_href(url, resp.headers.get('Location'))
                     
                     if url is not None:
@@ -39,3 +47,8 @@ async def unwind_url(http, url, max_iterations=20):
         pass
     
     return final_url
+
+def parse_jwt(token):
+    data = token.split('.')[1]
+    decoded_json = base64.b64decode(data + '==')
+    return json.loads(decoded_json)
