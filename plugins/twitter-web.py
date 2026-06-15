@@ -2,6 +2,7 @@ import re
 import dateutil.parser
 import json
 import httpx
+import html
 
 from hoordu.dynamic import Dynamic
 from hoordu.models import *
@@ -220,6 +221,7 @@ class Twitter(PluginBase):
                     right = entity[1]
                     text = (text[:left] + text[right:]).strip()
         
+        text = html.unescape(text)
         
         post = PostDetails()
         
