@@ -4,6 +4,7 @@ import sys
 import traceback
 from getpass import getpass
 from datetime import datetime, timedelta, timezone
+import logging
 
 import hoordu
 from hoordu.models import *
@@ -581,4 +582,13 @@ async def main():
                 print(orig)
 
 
+logger = logging.getLogger()
+handler = logging.StreamHandler()
+formatter = logging.Formatter('[{asctime}] {levelname:<3} | {name} | {message}', '%Y-%m-%d %H:%M:%S', style='{')
+handler.setFormatter(formatter)
+logger.setLevel(logging.INFO)
+logger.addHandler(handler)
+
 asyncio.run(main())
+
+
