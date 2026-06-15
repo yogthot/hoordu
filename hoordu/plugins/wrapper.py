@@ -33,7 +33,7 @@ class PluginWrapper:
     ):
         self.session = session
         self.plugin_class: Type[PluginBase] = plugin_class
-        self.log: logging.Logger = logging.getLogger(f'hoordu.{self.plugin_class.source}')
+        self.log: logging.Logger = logging.getLogger(f'hoordu.plugin.{self.plugin_class.id}')
         
         self.source: Source
         self.plugin: Plugin
@@ -108,6 +108,8 @@ class PluginWrapper:
         self.plugin = await self.get_plugin(self.session)
         self.config = Dynamic.from_json(self.source.config)
         
+        self.plugin_config = self.plugin.config
+        
         headers = {
             # TODO this could probably be done in a better way
             'User-Agent': self.session.hoordu.useragent,
@@ -115,9 +117,16 @@ class PluginWrapper:
         
         self.instance = self.plugin_class()
         self.instance.log = self.log
-        self.instance.config = Dynamic.from_json(self.plugin.config)
+        self.instance.config = Dynamic.from_json(self.plugin_config)
         
-        self.http = httpx.AsyncClient(http2=True, headers=headers, follow_redirects=True)
+        http_kwargs = {}
+        
+        # 'socks5://192.168.80.2:1080'
+        proxy = self.config.get('proxy')
+        if proxy is not None:
+            http_kwargs['proxy'] = proxy
+        
+        self.http = httpx.AsyncClient(http2=True, headers=headers, follow_redirects=True, **http_kwargs)
         async with self.http:
             self.instance.http = self.http
             await self.instance.init()
@@ -256,7 +265,9 @@ class PluginWrapper:
             raise ValueError('original id cannot be null when downloading a post')
         
         post_details = await self.instance.download(post_id)
-        return await self._convert_post(remote_post, post_details)
+        downloaded_post = await self._convert_post(remote_post, post_details)
+        await self.session.commit()
+        return downloaded_post
     
     async def probe_query(self,
         query: Dynamic
