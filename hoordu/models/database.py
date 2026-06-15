@@ -372,6 +372,7 @@ class FeedEntry(Base):
 class SubscriptionFlags(IntFlag):
     none = 0
     enabled = auto() # won't auto update if disabled
+    lock_interval = auto() # prevents the scheduler from changing the interval
 
 class Subscription(Base):
     __tablename__ = 'subscription'
@@ -403,6 +404,7 @@ class Subscription(Base):
     
     # flags
     enabled = FlagProperty('flags', SubscriptionFlags.enabled)
+    lock_interval = FlagProperty('flags', SubscriptionFlags.lock_interval)
     
     __table_args__ = (
         Index('idx_subscription', 'source_id', 'name', unique=True),

@@ -25,9 +25,56 @@ SENDMAIL_TO = os.environ.get('SENDMAIL_TO')
 
 post_delay = 10
 sub_delay = 60
-retry_limit = 3
+retry_limit = 2
+
+interval_sample_size = 20
+interval_exceed_factor = 0.5
 
 email_error_log = []
+
+
+async def calculate_new_interval(session, sub):
+    if sub.lock_interval:
+        return None
+    
+    post_times = await session.select(RemotePost.post_time) \
+            .join(FeedEntry) \
+            .where(
+                FeedEntry.subscription_id == sub.id,
+                RemotePost.post_time != None
+            ) \
+            .order_by(RemotePost.post_time.desc()) \
+            .limit(interval_sample_size) \
+            .all()
+    
+    source = await sub.awaitable_attrs.source
+    source_config = hoordu.Dynamic.from_json(source.config)
+    min_interval = timedelta(seconds=source_config.get('min_update_interval', 259200))  # 3 days
+    max_interval = timedelta(seconds=source_config.get('max_update_interval', 7776000)) # 90 days
+    
+    if len(post_times) == 0:
+        return None
+    
+    unique_times = sorted({d.date(): d for d in post_times}.values(), reverse=True)
+    
+    diffs = sorted(i - j for i, j in zip(unique_times[:-1], unique_times[1:]))[:-(len(unique_times)//9)]
+    
+    # a slightly different algorithm that usually produces more optimistic results
+    #diffs = [i - j for i, j in zip(unique_times[:-1], unique_times[1:])]
+    #for i in range(len(unique_times)//9):
+    #    diffs.remove(max(diffs))
+    
+    weights = [1 + (c / len(diffs)) / 2 for c in range(len(diffs))]
+    interval = sum((i * j for i, j in zip(diffs, weights)), timedelta()) / max(sum(weights), 1)
+    expected_date = post_times[0] + interval
+    
+    now = datetime.now(timezone.utc)
+    if expected_date < now:
+        interval = (now - post_times[0]) * interval_exceed_factor
+    
+    interval = max(min(interval, max_interval), min_interval)
+    
+    return interval
 
 async def sendmail(to_, subject, body):
     proc = await asyncio.create_subprocess_exec(
@@ -71,14 +118,14 @@ async def fetch(session, plugin, subscription):
     iterator = None
     
     attempt = 0
+    posts = []
     while True:
         attempt += 1
         try:
             iterator = plugin.update(subscription)
-            
-            
             async with contextlib.aclosing(iterator):
                 async for remote_post in iterator:
+                    posts.append(remote_post)
                     await asyncio.sleep(post_delay)
             
             # update subscription updated_time
@@ -86,7 +133,7 @@ async def fetch(session, plugin, subscription):
             subscription.last_feed_update_time = datetime.now(timezone.utc)
             session.add(subscription)
             await session.commit()
-            return
+            return posts
             
         except Exception as e:
             message = ' | '.join(str(x) for x in e.args)
@@ -143,16 +190,30 @@ async def main(sources):
             print(f'{source} - {count} subscriptions')
         
         total = len(subs)
-        for i, sub in enumerate(subs):
-            if i > 0:
+        for i, sub in enumerate(subs, start=1):
+            if i > 1:
                 await asyncio.sleep(sub_delay)
             
             await session.refresh(sub)
             
-            print(f'getting all new posts for subscription \'{sub.name}\' ({i+1}/{total})')
-            plugin = await session.plugin(sub.plugin.name)
-            await fetch(session, plugin, sub)
-            await session.commit()
+            print(f'getting all new posts for subscription \'{sub.name}\' ({i}/{total})')
+            try:
+                plugin = await session.plugin(sub.plugin.name)
+                await fetch(session, plugin, sub)
+                
+                # TODO check if we can update (sub needs a flag, or a config to disable auto-updating the interval)
+                new_interval = await calculate_new_interval(session, sub)
+                if new_interval is not None:
+                    sub.update_interval = new_interval
+                    session.add(sub)
+                
+                await session.commit()
+                
+            except Exception as e:
+                traceback.print_exc()
+                email_error_log.append(f'<b>{sub.plugin.name} {sub.name}</b>: {str(e)}')
+                email_error_log.append(f'<b>{sub.plugin.name}</b>: plugin is broken, will exit now')
+                return
     
     if USE_SEND_MAIL and len(email_error_log) > 0 and SENDMAIL_TO:
         subject = 'Hoordu update error summary'
@@ -161,6 +222,14 @@ async def main(sources):
 
 if __name__ == '__main__':
     import sys
+    import logging
+    
+    logger = logging.getLogger()
+    handler = logging.StreamHandler()
+    formatter = logging.Formatter('[{asctime}] {levelname} | {name} | {message}', '%Y-%m-%d %H:%M:%S', style='{')
+    handler.setFormatter(formatter)
+    logger.setLevel(logging.INFO)
+    logger.addHandler(handler)
     
     if len(sys.argv) == 2:
         sources = sys.argv[1].split(',')
